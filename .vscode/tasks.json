@@ -4,8 +4,8 @@
     {
       "label": "Package Extension",
       "type": "shell",
-      "command": "vsce",
-      "args": ["package"],
+      "command": "npx",
+      "args": ["@vscode/vsce", "package"],
       "group": {
         "kind": "build",
         "isDefault": false
@@ -13,10 +13,32 @@
       "problemMatcher": ["$tsc"]
     },
     {
-      "label": "Publish Package",
+      "label": "Publish Patch",
       "type": "shell",
-      "command": "vsce",
-      "args": ["publish", "${input:versionType}"],
+      "command": "npx",
+      "args": ["@vscode/vsce", "publish", "patch"],
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "Publish Minor",
+      "type": "shell",
+      "command": "npx",
+      "args": ["@vscode/vsce", "publish", "minor"],
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "Publish Major",
+      "type": "shell",
+      "command": "npx",
+      "args": ["@vscode/vsce", "publish", "major"],
       "group": {
         "kind": "build",
         "isDefault": false
@@ -26,8 +48,8 @@
     {
       "label": "Show Package Stats",
       "type": "shell",
-      "command": "vsce",
-      "args": ["show", "CodeontheRocks.brain-spawn"],
+      "command": "npx",
+      "args": ["@vscode/vsce", "show", "CodeontheRocks.brain-spawn"],
       "group": {
         "kind": "build",
         "isDefault": false
@@ -48,13 +70,5 @@
       }
     }
   ],
-  "inputs": [
-    {
-      "id": "versionType",
-      "type": "pickString",
-      "options": ["major", "minor", "patch"],
-      "default": "minor",
-      "description": "Select the version type to publish"
-    }
-  ]
+  "inputs": []
 }

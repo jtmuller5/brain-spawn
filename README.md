@@ -2,6 +2,8 @@
 
 Define and launch groups of pre-configured terminals with a single command.
 
+[VS Code Extension](https://marketplace.visualstudio.com/manage/publishers/codeontherocks/extensions/brain-spawn/hub)
+
 ## Features
 
 - **Spawn Groups** — Define named groups of terminals, each with its own command, icon, color, working directory, and environment variables.
