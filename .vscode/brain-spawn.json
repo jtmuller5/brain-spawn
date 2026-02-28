@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "groups": [
+    {
+      "name": "Full Stack Dev",
+      "terminals": [
+        {
+          "name": "Frontend",
+          "command": "npm run dev",
+          "icon": "browser",
+          "color": "green",
+          "cwd": "${workspaceFolder}/client"
+        },
+        {
+          "name": "API Server",
+          "command": "npm run server",
+          "icon": "server",
+          "color": "blue",
+          "cwd": "${workspaceFolder}/server"
+        },
+        {
+          "name": "Database",
+          "command": "docker compose up db",
+          "icon": "database",
+          "color": "yellow"
+        },
+        {
+          "name": "Tests",
+          "command": "npm run test:watch",
+          "icon": "beaker",
+          "color": "magenta",
+          "cwd": "${workspaceFolder}/server"
+        }
+      ]
+    }
+  ]
+}

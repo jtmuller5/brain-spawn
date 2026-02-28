@@ -1,0 +1,167 @@
+{
+  "name": "brain-spawn",
+  "displayName": "Brain Spawn",
+  "description": "Define and launch groups of pre-configured terminals with a single command",
+  "version": "0.1.0",
+  "publisher": "sapid",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:.vscode/brain-spawn.json",
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "brainSpawn.launch",
+        "title": "Brain Spawn: Launch"
+      },
+      {
+        "command": "brainSpawn.launchGroup",
+        "title": "Brain Spawn: Launch Group..."
+      },
+      {
+        "command": "brainSpawn.killGroup",
+        "title": "Brain Spawn: Kill Group..."
+      },
+      {
+        "command": "brainSpawn.editConfiguration",
+        "title": "Brain Spawn: Edit Configuration"
+      },
+      {
+        "command": "brainSpawn.launchGroupInline",
+        "title": "Launch Group",
+        "icon": "$(play)"
+      },
+      {
+        "command": "brainSpawn.killGroupInline",
+        "title": "Kill Group",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "brainSpawn.launchTerminal",
+        "title": "Launch Terminal",
+        "icon": "$(play)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "brainSpawn.launch",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "brainSpawn",
+          "title": "Brain Spawn",
+          "icon": "media/icons/brain-spawn.svg"
+        }
+      ]
+    },
+    "views": {
+      "brainSpawn": [
+        {
+          "id": "brainSpawnGroups",
+          "name": "Spawn Groups"
+        }
+      ]
+    },
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "brainSpawn.launchGroupInline",
+          "when": "view == brainSpawnGroups && viewItem == spawnGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "brainSpawn.killGroupInline",
+          "when": "view == brainSpawnGroups && viewItem == spawnGroupRunning",
+          "group": "inline@2"
+        },
+        {
+          "command": "brainSpawn.launchGroupInline",
+          "when": "view == brainSpawnGroups && viewItem == spawnGroupRunning",
+          "group": "inline@1"
+        },
+        {
+          "command": "brainSpawn.launchTerminal",
+          "when": "view == brainSpawnGroups && viewItem == terminalDef",
+          "group": "inline@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Brain Spawn",
+      "properties": {
+        "brainSpawn.groups": {
+          "type": "array",
+          "default": [],
+          "description": "User-level spawn group definitions (merged with workspace .vscode/brain-spawn.json groups)",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "terminals": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "command": {
+                      "type": "string"
+                    },
+                    "icon": {
+                      "type": "string"
+                    },
+                    "color": {
+                      "type": "string"
+                    },
+                    "cwd": {
+                      "type": "string"
+                    },
+                    "env": {
+                      "type": "object"
+                    },
+                    "focus": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "terminals"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/codicons": "^0.0.44",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.3.0"
+  }
+}
