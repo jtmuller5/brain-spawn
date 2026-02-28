@@ -2,7 +2,7 @@
   "name": "brain-spawn",
   "displayName": "Brain Spawn",
   "description": "Define and launch groups of pre-configured terminals with a single command",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "codeontherocks",
   "repository": {
     "type": "git",
