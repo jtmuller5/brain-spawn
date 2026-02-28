@@ -14,7 +14,6 @@
 - **Status bar** — Brain Spawn item in bottom bar, click to launch
 
 ## To publish
-1. `npm install -g @vscode/vsce`
-2. Update `publisher` in package.json to your VS Code Marketplace publisher ID
-3. `vsce package` to create a `.vsix`
-4. `vsce publish` to publish
+1. Create a **Personal Access Token** on [Azure DevOps](https://dev.azure.com) with the `Marketplace > Manage` scope
+2. Log in: `npx @vscode/vsce login codeontherocks` and paste your PAT
+3. Publish: run the **Publish Package** task in VS Code, or `npx @vscode/vsce publish patch`

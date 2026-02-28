@@ -27,7 +27,7 @@
       "label": "Show Package Stats",
       "type": "shell",
       "command": "vsce",
-      "args": ["show", "CodeontheRocks.clibbits"],
+      "args": ["show", "CodeontheRocks.brain-spawn"],
       "group": {
         "kind": "build",
         "isDefault": false

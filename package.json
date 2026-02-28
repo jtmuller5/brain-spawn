@@ -3,7 +3,11 @@
   "displayName": "Brain Spawn",
   "description": "Define and launch groups of pre-configured terminals with a single command",
   "version": "0.1.0",
-  "publisher": "sapid",
+  "publisher": "codeontherocks",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jtmuller5/brain-spawn"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
