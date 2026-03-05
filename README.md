@@ -4,6 +4,8 @@ Spawn a swarm of Claude terminals with a single command.
 
 [VS Code Extension](https://marketplace.visualstudio.com/manage/publishers/codeontherocks/extensions/brain-spawn/hub)
 
+![Brain Spawn Demo](media/demo.gif)
+
 ## Features
 
 - **Instant Swarm** — Launch 5 Claude terminals at once, each with a random name, icon, and color.
