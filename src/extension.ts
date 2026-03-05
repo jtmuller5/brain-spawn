@@ -1,45 +1,56 @@
 import * as vscode from "vscode";
-import { ConfigLoader } from "./config/configLoader";
 import { TerminalManager } from "./terminals/terminalManager";
 import { registerCommands } from "./commands/registerCommands";
-import { createStatusBar } from "./views/statusBar";
-import { SpawnTreeProvider } from "./views/treeView/spawnTreeProvider";
+import { DashboardPanel } from "./webview/dashboardPanel";
+import { ClaudeMonitor } from "./hooks/claudeMonitor";
+import { HookServer } from "./hooks/hookServer";
+import { writeHookConfig, removeHookConfig } from "./hooks/hookConfigWriter";
+import { setClaudeMonitor } from "./terminals/terminalGroup";
+
+let hookServer: HookServer | undefined;
 
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<void> {
-  const configLoader = new ConfigLoader();
-  await configLoader.load();
-
   const terminalManager = new TerminalManager();
-  const treeProvider = new SpawnTreeProvider(configLoader, terminalManager);
 
-  // File watcher + settings listener
-  context.subscriptions.push(...configLoader.startWatching());
+  // Claude monitoring
+  const claudeMonitor = new ClaudeMonitor();
+  setClaudeMonitor(claudeMonitor);
+
+  hookServer = new HookServer(claudeMonitor);
+  try {
+    await hookServer.start();
+    await writeHookConfig(hookServer.port);
+  } catch (err) {
+    vscode.window.showWarningMessage(
+      `Brain Spawn: Failed to start hook server: ${err}`
+    );
+  }
 
   // Terminal close cleanup
   context.subscriptions.push(terminalManager.startListening());
 
   // Commands
   context.subscriptions.push(
-    ...registerCommands(context, configLoader, terminalManager, treeProvider)
+    ...registerCommands(context, terminalManager, claudeMonitor)
   );
 
-  // Status bar
-  context.subscriptions.push(
-    createStatusBar(configLoader, terminalManager)
-  );
-
-  // Tree view
-  const treeView = vscode.window.createTreeView("brainSpawnGroups", {
-    treeDataProvider: treeProvider,
-  });
-  context.subscriptions.push(treeView);
-
-  // Refresh tree on config changes
-  context.subscriptions.push(
-    configLoader.onChange(() => treeProvider.refresh())
-  );
+  // Auto-open dashboard
+  const config = vscode.workspace.getConfiguration("brainSpawn");
+  if (config.get<boolean>("openDashboardOnStart")) {
+    DashboardPanel.createOrShow(context, claudeMonitor, terminalManager);
+  }
 }
 
-export function deactivate(): void {}
+export async function deactivate(): Promise<void> {
+  if (hookServer) {
+    hookServer.dispose();
+    hookServer = undefined;
+  }
+  try {
+    await removeHookConfig();
+  } catch {
+    // Best-effort cleanup
+  }
+}

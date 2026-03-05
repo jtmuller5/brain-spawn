@@ -1,7 +1,14 @@
 import * as vscode from "vscode";
-import { SpawnGroup, TerminalDefinition } from "../types";
+import * as crypto from "crypto";
 import { TerminalManager } from "./terminalManager";
-import { substituteVariables } from "../config/variableSubstitution";
+import { ClaudeMonitor } from "../hooks/claudeMonitor";
+
+interface TerminalDefinition {
+  name: string;
+  icon?: string;
+  color?: string;
+  command?: string;
+}
 
 const COLOR_MAP: Record<string, string> = {
   black: "terminal.ansiBlack",
@@ -14,60 +21,76 @@ const COLOR_MAP: Record<string, string> = {
   white: "terminal.ansiWhite",
 };
 
-export async function launchGroup(
-  group: SpawnGroup,
-  terminalManager: TerminalManager
-): Promise<void> {
-  // Check if already running
-  if (terminalManager.isGroupRunning(group.name)) {
-    const choice = await vscode.window.showWarningMessage(
-      `Group "${group.name}" is already running. Kill and relaunch?`,
-      "Kill & Relaunch",
-      "Cancel"
-    );
-    if (choice !== "Kill & Relaunch") {
-      return;
-    }
-    terminalManager.killGroup(group.name);
-  }
+const RANDOM_ICONS = [
+  "rocket", "zap", "flame", "bug", "beaker", "heart", "star-full",
+  "lightbulb", "megaphone", "compass", "telescope", "squirrel",
+  "smiley", "coffee", "globe", "jersey", "law", "ruby",
+];
 
-  let focusTerminal: vscode.Terminal | undefined;
+const RANDOM_COLORS = Object.keys(COLOR_MAP);
 
-  for (const def of group.terminals) {
-    const terminal = createTerminal(def);
-    terminalManager.track(group.name, terminal);
+const RANDOM_NAMES = [
+  "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot",
+  "Ghost", "Horizon", "Ion", "Jazz", "Kilo", "Luna",
+  "Meteor", "Nova", "Orbit", "Pulse", "Quantum", "Raven",
+  "Spark", "Titan", "Ultra", "Vortex", "Warp", "Xenon",
+];
 
-    if (def.command) {
-      terminal.sendText(substituteVariables(def.command));
-    }
-
-    if (def.focus) {
-      focusTerminal = terminal;
-    }
-  }
-
-  // Focus: explicitly marked terminal, or last terminal
-  const toFocus =
-    focusTerminal ?? terminalManager.getGroupTerminals(group.name).at(-1);
-  toFocus?.show();
+function pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
-export function launchSingleTerminal(
-  def: TerminalDefinition,
-  groupName: string,
-  terminalManager: TerminalManager
-): void {
-  const terminal = createTerminal(def);
-  terminalManager.track(groupName, terminal);
+function pickUnique<T>(arr: T[], count: number): T[] {
+  const shuffled = [...arr].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, count);
+}
 
-  if (def.command) {
-    terminal.sendText(substituteVariables(def.command));
+function getCommand(): string {
+  return vscode.workspace.getConfiguration("brainSpawn").get<string>("command", "claude");
+}
+
+let claudeMonitor: ClaudeMonitor | undefined;
+
+export function setClaudeMonitor(monitor: ClaudeMonitor): void {
+  claudeMonitor = monitor;
+}
+
+const GROUP_NAME = "Brain Spawn";
+
+export function launchNewTerminal(terminalManager: TerminalManager): void {
+  const command = getCommand();
+  const names = pickUnique(RANDOM_NAMES, 5);
+
+  for (let i = 0; i < 5; i++) {
+    const def: TerminalDefinition = {
+      name: names[i],
+      icon: pick(RANDOM_ICONS),
+      color: pick(RANDOM_COLORS),
+      command,
+    };
+    const terminal = createTerminal(def);
+    terminalManager.track(GROUP_NAME, terminal);
+    terminal.sendText(command);
   }
+}
 
+export function launchOneTerminal(terminalManager: TerminalManager): void {
+  const command = getCommand();
+  const def: TerminalDefinition = {
+    name: pick(RANDOM_NAMES),
+    icon: pick(RANDOM_ICONS),
+    color: pick(RANDOM_COLORS),
+    command,
+  };
+  const terminal = createTerminal(def);
+  terminalManager.track(GROUP_NAME, terminal);
+  terminal.sendText(command);
   terminal.show();
 }
 
 function createTerminal(def: TerminalDefinition): vscode.Terminal {
+  const terminalId = crypto.randomUUID();
+
   const options: vscode.TerminalOptions = {
     name: def.name,
     iconPath: new vscode.ThemeIcon(def.icon ?? "terminal"),
@@ -80,16 +103,13 @@ function createTerminal(def: TerminalDefinition): vscode.Terminal {
     }
   }
 
-  if (def.cwd) {
-    options.cwd = substituteVariables(def.cwd);
-  }
+  const env: Record<string, string> = {
+    BRAIN_SPAWN_TERMINAL_ID: terminalId,
+  };
+  options.env = env;
 
-  if (def.env) {
-    const resolvedEnv: Record<string, string> = {};
-    for (const [key, value] of Object.entries(def.env)) {
-      resolvedEnv[key] = substituteVariables(value);
-    }
-    options.env = resolvedEnv;
+  if (claudeMonitor) {
+    claudeMonitor.registerTerminal(terminalId, def.name, GROUP_NAME, def.icon, def.color);
   }
 
   return vscode.window.createTerminal(options);
