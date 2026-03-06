@@ -138,7 +138,7 @@ export function forkTerminal(
   };
   const terminal = createTerminal(def);
   terminalManager.track(GROUP_NAME, terminal);
-  terminal.sendText(`${command} --fork-session ${sessionId}`);
+  terminal.sendText(`${command} --resume ${sessionId} --fork-session`);
   terminal.show();
 }
 

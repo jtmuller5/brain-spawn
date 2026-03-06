@@ -244,8 +244,10 @@
         const save = () => {
           const value = input.value.trim();
           if (value && value !== terminal.terminalName) {
+            terminal.terminalName = value;
             vscode.postMessage({ type: "setName", terminalId: id, name: value });
           }
+          render();
         };
 
         input.addEventListener("blur", save);
@@ -280,7 +282,9 @@
 
         const save = () => {
           const value = input.value.trim();
+          terminal.description = value;
           vscode.postMessage({ type: "setDescription", terminalId: id, description: value });
+          render();
         };
 
         input.addEventListener("blur", save);
