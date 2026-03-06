@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 
+const MAX_TERMINALS = 10;
+
 export class TerminalManager {
   private groups = new Map<string, vscode.Terminal[]>();
   private changeCallbacks: (() => void)[] = [];
@@ -54,12 +56,25 @@ export class TerminalManager {
     return Array.from(this.groups.keys());
   }
 
+  isTracked(terminal: vscode.Terminal): boolean {
+    for (const terminals of this.groups.values()) {
+      if (terminals.includes(terminal)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   getActiveTerminalCount(): number {
     let count = 0;
     for (const terminals of this.groups.values()) {
       count += terminals.length;
     }
     return count;
+  }
+
+  getRemainingCapacity(): number {
+    return Math.max(0, MAX_TERMINALS - this.getActiveTerminalCount());
   }
 
   onDidChange(callback: () => void): vscode.Disposable {

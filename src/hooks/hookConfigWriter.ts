@@ -54,9 +54,9 @@ function buildHooks(port: number): Record<string, MatcherGroup[]> {
       hooks: [handler],
       _marker: BRAIN_SPAWN_MARKER,
     };
-    // Tool events require a matcher to filter by tool name
+    // Tool events: no matcher means all tools fire the hook
     if (TOOL_MATCHER_EVENTS.has(event)) {
-      group.matcher = "AskUserQuestion";
+      // intentionally no matcher — capture all tool events
     }
     // Notification events match on permission and elicitation dialogs
     if (NOTIFICATION_MATCHER_EVENTS.has(event)) {

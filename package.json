@@ -30,6 +30,10 @@
         "title": "Brain Spawn: New Terminal"
       },
       {
+        "command": "brainSpawn.newPlanTerminal",
+        "title": "Brain Spawn: New Plan Terminal"
+      },
+      {
         "command": "brainSpawn.openDashboard",
         "title": "Brain Spawn: Dashboard"
       }

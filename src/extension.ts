@@ -14,6 +14,18 @@ export async function activate(
 ): Promise<void> {
   const terminalManager = new TerminalManager();
 
+  // Close all pre-existing terminals (VS Code restores them async after activation)
+  for (const terminal of vscode.window.terminals) {
+    terminal.dispose();
+  }
+  // Only dispose stale restored terminals briefly after activation
+  const staleTerminalListener = vscode.window.onDidOpenTerminal((terminal) => {
+    if (!terminalManager.isTracked(terminal)) {
+      terminal.dispose();
+    }
+  });
+  setTimeout(() => staleTerminalListener.dispose(), 3000);
+
   // Claude monitoring
   const claudeMonitor = new ClaudeMonitor();
   setClaudeMonitor(claudeMonitor);
@@ -41,6 +53,7 @@ export async function activate(
   if (config.get<boolean>("openDashboardOnStart")) {
     DashboardPanel.createOrShow(context, claudeMonitor, terminalManager);
   }
+
 }
 
 export async function deactivate(): Promise<void> {
