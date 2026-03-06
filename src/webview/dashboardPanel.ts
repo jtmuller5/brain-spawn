@@ -283,7 +283,7 @@ export class DashboardPanel {
       </div>
       <div class="header-actions">
         <button class="header-btn" id="launchBtn" title="Launch terminal group">
-          <i class="codicon codicon-run-all"></i> Launch
+          <i class="codicon codicon-run-all"></i> Swarm
         </button>
         <button class="header-btn" id="newTerminalBtn" title="New brain">
           <i class="codicon codicon-add"></i> Brain
@@ -301,7 +301,7 @@ export class DashboardPanel {
       <p class="hint">Launch a terminal group to get started.</p>
       <div class="empty-actions">
         <button class="header-btn" id="emptyLaunchBtn" title="Launch terminal group">
-          <i class="codicon codicon-run-all"></i> Launch
+          <i class="codicon codicon-run-all"></i> Swarm
         </button>
         <button class="header-btn" id="emptyNewTerminalBtn" title="New brain">
           <i class="codicon codicon-add"></i> Brain

@@ -32,7 +32,10 @@
       case "state":
         terminals = msg.terminals || [];
         if (currentView === "dashboard") {
-          render();
+          // Don't re-render while user is editing a name or description
+          if (!terminalList.querySelector(".name-input, .description-input")) {
+            render();
+          }
         } else if (currentView === "logs" && logsTerminalId) {
           // Re-request logs for live updates
           vscode.postMessage({ type: "requestLogs", terminalId: logsTerminalId });
@@ -107,7 +110,7 @@
         const messageHtml = chatMessages.length > 0
           ? `<div class="chat-history" data-id="${escapeAttr(t.terminalId)}">${chatMessages.map((m) => {
               const roleClass = m.role === "user" ? "chat-user" : "chat-assistant";
-              const avatarLetter = m.role === "user" ? "Y" : "A";
+              const avatarLetter = m.role === "user" ? "U" : "A";
               return `<div class="chat-row ${roleClass}"><span class="chat-avatar">${avatarLetter}</span><span class="chat-text">${renderMarkdown(m.text)}</span></div>`;
             }).join("")}</div>`
           : "";
@@ -168,8 +171,8 @@
     // Bind click handlers — clicking the card opens the terminal
     terminalList.querySelectorAll(".terminal-card").forEach((card) => {
       card.addEventListener("click", (e) => {
-        // Don't open terminal if a button was clicked
-        if (/** @type {HTMLElement} */ (e.target).closest("button")) {
+        // Don't open terminal if a button or input was clicked
+        if (/** @type {HTMLElement} */ (e.target).closest("button, input")) {
           return;
         }
         const id = /** @type {HTMLElement} */ (card).dataset.id;
