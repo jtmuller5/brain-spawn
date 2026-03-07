@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { TerminalManager } from "../terminals/terminalManager";
 import { ClaudeMonitor } from "../hooks/claudeMonitor";
 import { DashboardPanel } from "../webview/dashboardPanel";
-import { launchNewTerminal, launchOneTerminal, launchPlanTerminal } from "../terminals/terminalGroup";
+import { launchNewTerminal, launchOneTerminal, launchPlanTerminal, launchWorktreeTerminal } from "../terminals/terminalGroup";
 
 export function registerCommands(
   context: vscode.ExtensionContext,
@@ -18,6 +18,9 @@ export function registerCommands(
     }),
     vscode.commands.registerCommand("brainSpawn.newPlanTerminal", () => {
       launchPlanTerminal(terminalManager);
+    }),
+    vscode.commands.registerCommand("brainSpawn.newWorktreeTerminal", () => {
+      launchWorktreeTerminal(terminalManager);
     }),
     vscode.commands.registerCommand("brainSpawn.openDashboard", () => {
       if (claudeMonitor) {

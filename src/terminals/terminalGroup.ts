@@ -64,7 +64,7 @@ export function launchNewTerminal(terminalManager: TerminalManager): void {
     return;
   }
 
-  const count = Math.min(5, capacity);
+  const count = Math.min(4, capacity);
   const command = getCommand();
   const names = pickUnique(BRAIN_SPAWN_NAMES, count);
 
@@ -116,6 +116,25 @@ export function launchPlanTerminal(terminalManager: TerminalManager): void {
   const terminal = createTerminal(def);
   terminalManager.track(GROUP_NAME, terminal);
   terminal.sendText(`${command} --permission-mode plan`);
+  terminal.show();
+}
+
+export function launchWorktreeTerminal(terminalManager: TerminalManager): void {
+  if (terminalManager.getRemainingCapacity() === 0) {
+    vscode.window.showWarningMessage("Terminal limit reached (max 10). Close some terminals first.");
+    return;
+  }
+
+  const command = getCommand();
+  const def: TerminalDefinition = {
+    name: pick(BRAIN_SPAWN_NAMES),
+    icon: "git-branch",
+    color: pick(RANDOM_COLORS),
+    command,
+  };
+  const terminal = createTerminal(def);
+  terminalManager.track(GROUP_NAME, terminal);
+  terminal.sendText(`${command} --worktree`);
   terminal.show();
 }
 

@@ -15,6 +15,7 @@ export interface ClaudeTerminalState {
   lastMessage: string;
   lastMessageSource: "user" | "assistant";
   chatHistory: ChatMessage[];
+  editedFiles: string[];
   sessionId?: string;
   icon?: string;
   color?: string;
@@ -30,6 +31,7 @@ export interface HookEvent {
   tool_name?: string;
   tool_input?: {
     questions?: Array<{ question?: string }>;
+    file_path?: string;
     [key: string]: unknown;
   };
   notification_type?: string;
@@ -65,7 +67,9 @@ export class ClaudeMonitor {
   private states = new Map<string, ClaudeTerminalState>();
   private eventLogs = new Map<string, StoredHookEvent[]>();
   private closedTerminalIds = new Set<string>();
+  private sessionEndTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private changeCallbacks: (() => void)[] = [];
+  private externalTerminalCallbacks: ((terminalId: string) => void)[] = [];
 
   registerTerminal(
     terminalId: string,
@@ -84,6 +88,7 @@ export class ClaudeMonitor {
       lastMessage: "",
       lastMessageSource: "user",
       chatHistory: [],
+      editedFiles: [],
       icon: icon ?? "terminal",
       color,
       createdAt: now,
@@ -94,6 +99,11 @@ export class ClaudeMonitor {
 
   unregisterTerminal(terminalId: string): void {
     this.closedTerminalIds.add(terminalId);
+    const pending = this.sessionEndTimers.get(terminalId);
+    if (pending) {
+      clearTimeout(pending);
+      this.sessionEndTimers.delete(terminalId);
+    }
     if (this.states.delete(terminalId)) {
       this.eventLogs.delete(terminalId);
       this.notifyChange();
@@ -116,6 +126,14 @@ export class ClaudeMonitor {
       return;
     }
 
+    if (event.hook_event_name !== "SessionEnd") {
+      const pending = this.sessionEndTimers.get(terminalId);
+      if (pending) {
+        clearTimeout(pending);
+        this.sessionEndTimers.delete(terminalId);
+      }
+    }
+
     let state = this.states.get(terminalId);
 
     // If we don't have a registered terminal for this ID, create one for external Claude sessions
@@ -130,10 +148,14 @@ export class ClaudeMonitor {
         lastMessage: "",
         lastMessageSource: "user",
         chatHistory: [],
+        editedFiles: [],
         createdAt: now,
         statusSince: now,
       };
       this.states.set(terminalId, state);
+      for (const cb of this.externalTerminalCallbacks) {
+        cb(terminalId);
+      }
     }
 
     if (sessionId) {
@@ -180,6 +202,15 @@ export class ClaudeMonitor {
           state.status = "busy";
           state.statusSince = Date.now();
         }
+        if (
+          (event.tool_name === "Edit" || event.tool_name === "Write") &&
+          event.tool_input?.file_path
+        ) {
+          const filePath = event.tool_input.file_path;
+          if (!state.editedFiles.includes(filePath)) {
+            state.editedFiles.push(filePath);
+          }
+        }
         break;
 
       case "Notification":
@@ -209,13 +240,20 @@ export class ClaudeMonitor {
         }
         break;
 
-      case "SessionEnd":
-        state.status = "idle";
-        state.statusSince = Date.now();
-        state.lastMessage = "";
-        state.chatHistory = [];
-        state.sessionId = undefined;
-        break;
+      case "SessionEnd": {
+        const timer = setTimeout(() => {
+          this.sessionEndTimers.delete(terminalId);
+          state.status = "idle";
+          state.statusSince = Date.now();
+          state.lastMessage = "";
+          state.chatHistory = [];
+          state.editedFiles = [];
+          state.sessionId = undefined;
+          this.notifyChange();
+        }, 3000);
+        this.sessionEndTimers.set(terminalId, timer);
+        return; // Don't notifyChange yet — wait for timeout
+      }
 
       default:
         return; // Unknown event, no notification needed
@@ -248,12 +286,40 @@ export class ClaudeMonitor {
     return Array.from(this.states.values());
   }
 
+  reorderTerminals(orderedIds: string[]): void {
+    const reordered = new Map<string, ClaudeTerminalState>();
+    for (const id of orderedIds) {
+      const state = this.states.get(id);
+      if (state) {
+        reordered.set(id, state);
+      }
+    }
+    // Append any remaining terminals not in the list
+    for (const [id, state] of this.states) {
+      if (!reordered.has(id)) {
+        reordered.set(id, state);
+      }
+    }
+    this.states = reordered;
+    this.fireChange();
+  }
+
   onDidChange(callback: () => void): vscode.Disposable {
     this.changeCallbacks.push(callback);
     return new vscode.Disposable(() => {
       const idx = this.changeCallbacks.indexOf(callback);
       if (idx >= 0) {
         this.changeCallbacks.splice(idx, 1);
+      }
+    });
+  }
+
+  onExternalTerminalDetected(callback: (terminalId: string) => void): vscode.Disposable {
+    this.externalTerminalCallbacks.push(callback);
+    return new vscode.Disposable(() => {
+      const idx = this.externalTerminalCallbacks.indexOf(callback);
+      if (idx >= 0) {
+        this.externalTerminalCallbacks.splice(idx, 1);
       }
     });
   }

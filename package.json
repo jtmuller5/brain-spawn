@@ -34,6 +34,10 @@
         "title": "Brain Spawn: New Plan Terminal"
       },
       {
+        "command": "brainSpawn.newWorktreeTerminal",
+        "title": "Brain Spawn: New Worktree Terminal"
+      },
+      {
         "command": "brainSpawn.openDashboard",
         "title": "Brain Spawn: Dashboard"
       }

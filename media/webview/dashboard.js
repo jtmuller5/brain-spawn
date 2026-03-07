@@ -21,16 +21,21 @@
   let logsTerminalName = "";
   /** @type {Array<{timestamp: number, terminalId: string, sessionId?: string, event: any}>} */
   let eventLogs = [];
+  /** @type {string[]} */
+  let logsEditedFiles = [];
   /** @type {Set<string>} */
   let activeEventFilters = new Set();
   /** @type {string | null} */
   let activeTerminalId = null;
+  /** @type {boolean} */
+  let isClaudeCommand = true;
 
   window.addEventListener("message", (event) => {
     const msg = event.data;
     switch (msg.type) {
       case "state":
         terminals = msg.terminals || [];
+        isClaudeCommand = msg.isClaudeCommand !== false;
         if (currentView === "dashboard") {
           // Don't re-render while user is editing a name or description
           if (!terminalList.querySelector(".name-input, .description-input")) {
@@ -45,10 +50,14 @@
         activeTerminalId = msg.terminalId || null;
         updateActiveCard();
         break;
+      case "usageResult":
+        updateUsageBar(msg.content, msg.error);
+        break;
       case "eventLogs":
         logsTerminalId = msg.terminalId;
         logsTerminalName = msg.terminalName || "Unknown";
         eventLogs = msg.events || [];
+        logsEditedFiles = msg.editedFiles || [];
         renderLogsView();
         break;
     }
@@ -122,54 +131,62 @@
           ? `<div class="terminal-description" data-id="${escapeAttr(t.terminalId)}" title="Click to edit description">${escapeHtml(t.description)}</div>`
           : `<div class="terminal-description placeholder" data-id="${escapeAttr(t.terminalId)}" title="Click to add a description">Add description...</div>`;
 
-        return `<div class="terminal-card" data-id="${escapeAttr(t.terminalId)}">
-          <button class="close-btn" data-id="${escapeAttr(t.terminalId)}" title="Close terminal">
-            <i class="codicon codicon-close"></i>
-          </button>
-          <button class="action-btn clear-btn send-text-btn" data-id="${escapeAttr(t.terminalId)}" data-text="/clear" title="/clear">
-            <i class="codicon codicon-clear-all"></i>
-          </button>
-          ${t.sessionId ? `<button class="action-btn fork-btn" data-id="${escapeAttr(t.terminalId)}" title="Fork session">
-            <i class="codicon codicon-repo-forked"></i>
-          </button>` : ""}
+        return `<div class="terminal-card status-${statusClass}" data-id="${escapeAttr(t.terminalId)}">
+          <div class="card-left-actions">
+            <button class="action-btn close-btn" data-id="${escapeAttr(t.terminalId)}" title="Close terminal">
+              <i class="codicon codicon-close"></i>
+            </button>
+            ${isClaudeCommand ? `<button class="action-btn clear-btn send-text-btn" data-id="${escapeAttr(t.terminalId)}" data-text="/clear" title="/clear">
+              <i class="codicon codicon-clear-all"></i>
+            </button>` : ""}
+            ${isClaudeCommand && t.sessionId ? `<button class="action-btn fork-btn" data-id="${escapeAttr(t.terminalId)}" title="Fork session">
+              <i class="codicon codicon-repo-forked"></i>
+            </button>
+            <button class="action-btn export-btn" data-id="${escapeAttr(t.terminalId)}" title="Export conversation">
+              <i class="codicon codicon-copy"></i>
+            </button>` : ""}
+            ${isClaudeCommand ? `<button class="action-btn logs-btn" data-id="${escapeAttr(t.terminalId)}" title="View logs">
+              <i class="codicon codicon-output"></i>
+            </button>` : ""}
+          </div>
           <div class="card-top-right">
-            <div class="terminal-actions">
-              <button class="action-btn send-text-btn" data-id="${escapeAttr(t.terminalId)}" data-text="/plan" title="/plan">
-                <i class="codicon codicon-map"></i>
-              </button>
-              <button class="action-btn send-text-btn" data-id="${escapeAttr(t.terminalId)}" data-text="/usage" title="/usage">
-                <i class="codicon codicon-dashboard"></i>
-              </button>
-              <button class="action-btn send-text-btn" data-id="${escapeAttr(t.terminalId)}" data-text="/simplify" title="/simplify">
-                <i class="codicon codicon-sparkle"></i>
-              </button>
-              <button class="action-btn logs-btn" data-id="${escapeAttr(t.terminalId)}" title="View logs">
-                <i class="codicon codicon-output"></i>
-              </button>
-            </div>
             <div class="status-dot ${statusClass}" title="${statusLabel}"></div>
           </div>
           <div class="card-header">
             <div class="terminal-name-row">
               <i class="codicon codicon-${escapeAttr(iconId)} terminal-icon${colorClass}"></i>
-              <span class="terminal-name" data-id="${escapeAttr(t.terminalId)}" title="Click to rename">${escapeHtml(t.terminalName)}</span>
+              <div class="terminal-name-group">
+                <span class="terminal-name" data-id="${escapeAttr(t.terminalId)}" title="Click to rename">${escapeHtml(t.terminalName)}</span>
+                <span class="terminal-status-inline">
+                  <span class="terminal-status" data-since="${t.statusSince}">${statusLabel} <span class="status-duration">(${durationText})</span></span>
+                  <span class="terminal-meta-sep">&middot;</span>
+                  <span>${createdLabel}</span>
+                </span>
+              </div>
             </div>
             ${descriptionHtml}
-            <div class="terminal-status-row">
-              <span class="terminal-status" data-since="${t.statusSince}">${statusLabel} <span class="status-duration">(${durationText})</span></span>
-              <span class="terminal-meta-sep">&middot;</span>
-              <span>${createdLabel}</span>
-            </div>
           </div>
           ${messageHtml}
         </div>`;
       })
-      .join("");
+      .join("")
+      + `<div class="terminal-card new-brain-card" title="New brain">
+          <i class="codicon codicon-add new-brain-icon"></i>
+          <span class="new-brain-label">New Brain</span>
+        </div>`;
 
     statusTimer = setInterval(updateStatusDurations, 1000);
 
+    // New brain card
+    const newBrainCard = terminalList.querySelector(".new-brain-card");
+    if (newBrainCard) {
+      newBrainCard.addEventListener("click", () => {
+        vscode.postMessage({ type: "newTerminal" });
+      });
+    }
+
     // Bind click handlers — clicking the card opens the terminal
-    terminalList.querySelectorAll(".terminal-card").forEach((card) => {
+    terminalList.querySelectorAll(".terminal-card:not(.new-brain-card)").forEach((card) => {
       card.addEventListener("click", (e) => {
         // Don't open terminal if a button or input was clicked
         if (/** @type {HTMLElement} */ (e.target).closest("button, input")) {
@@ -210,6 +227,13 @@
       });
     });
 
+    terminalList.querySelectorAll(".export-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const el = /** @type {HTMLElement} */ (e.currentTarget);
+        vscode.postMessage({ type: "exportConversation", terminalId: el.dataset.id });
+      });
+    });
+
     terminalList.querySelectorAll(".logs-btn").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         const el = /** @type {HTMLElement} */ (e.currentTarget);
@@ -221,6 +245,7 @@
     });
 
     updateActiveCard();
+    initDragAndDrop();
 
     terminalList.querySelectorAll(".terminal-name").forEach((el) => {
       el.addEventListener("click", (e) => {
@@ -295,6 +320,70 @@
             input.blur();
           }
         });
+      });
+    });
+  }
+
+  // ── Drag and Drop ──
+
+  /** @type {HTMLElement | null} */
+  let draggedCard = null;
+
+  function initDragAndDrop() {
+    terminalList.querySelectorAll(".terminal-card:not(.new-brain-card)").forEach((card) => {
+      const el = /** @type {HTMLElement} */ (card);
+      el.draggable = true;
+
+      el.addEventListener("dragstart", (e) => {
+        draggedCard = el;
+        el.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", el.dataset.id);
+      });
+
+      el.addEventListener("dragend", () => {
+        el.classList.remove("dragging");
+        draggedCard = null;
+        terminalList.querySelectorAll(".terminal-card").forEach((c) => {
+          c.classList.remove("drag-over");
+        });
+      });
+
+      el.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        if (draggedCard && el !== draggedCard) {
+          terminalList.querySelectorAll(".terminal-card").forEach((c) => {
+            c.classList.remove("drag-over");
+          });
+          el.classList.add("drag-over");
+        }
+      });
+
+      el.addEventListener("dragleave", () => {
+        el.classList.remove("drag-over");
+      });
+
+      el.addEventListener("drop", (e) => {
+        e.preventDefault();
+        el.classList.remove("drag-over");
+        if (!draggedCard || el === draggedCard) { return; }
+
+        // Rearrange in DOM
+        const cards = [...terminalList.querySelectorAll(".terminal-card")];
+        const fromIdx = cards.indexOf(draggedCard);
+        const toIdx = cards.indexOf(el);
+        if (fromIdx < toIdx) {
+          el.after(draggedCard);
+        } else {
+          el.before(draggedCard);
+        }
+
+        // Send new order to extension
+        const orderedIds = [...terminalList.querySelectorAll(".terminal-card")].map(
+          (c) => /** @type {HTMLElement} */ (c).dataset.id
+        );
+        vscode.postMessage({ type: "reorderTerminals", orderedIds });
       });
     });
   }
@@ -378,6 +467,50 @@
     return str.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
   }
 
+  /**
+   * Extract the filename from a full file path.
+   * @param {string} filePath
+   * @returns {string}
+   */
+  function fileName(filePath) {
+    return filePath.split("/").pop() || filePath;
+  }
+
+  /**
+   * Parse weekly usage percentage from /usage output and update the bar.
+   * @param {string} content
+   * @param {boolean} isError
+   */
+  function updateUsageBar(content, isError) {
+    console.log("[BrainSpawn] updateUsageBar called, isError:", isError, "content length:", content?.length);
+    const bar = document.getElementById("usageBar");
+    const fill = document.getElementById("usageBarFill");
+    const label = document.getElementById("usageBarLabel");
+
+    if (isError || !fill || !label) {
+      return;
+    }
+
+    // Find all "X% used" matches and take the first one
+    const allMatches = [...content.matchAll(/(\d+)% used/g)];
+    if (allMatches.length === 0) {
+      return;
+    }
+
+    const pct = parseInt(allMatches[0][1], 10);
+    fill.style.width = pct + "%";
+    label.textContent = pct + "%";
+
+    // Color the bar based on usage level
+    if (pct >= 90) {
+      fill.className = "usage-bar-fill usage-danger";
+    } else if (pct >= 70) {
+      fill.className = "usage-bar-fill usage-warning";
+    } else {
+      fill.className = "usage-bar-fill";
+    }
+  }
+
   function renderLogsView() {
     if (statusTimer) {
       clearInterval(statusTimer);
@@ -405,12 +538,12 @@
           .join("")}</div>`
       : "";
 
+    const reversedEntries = filtered.slice().reverse();
+
     const entriesHtml =
       filtered.length === 0
         ? `<div class="logs-empty"><p>No events recorded yet.</p></div>`
-        : `<div class="logs-list">${filtered
-            .slice()
-            .reverse()
+        : `<div class="logs-list">${reversedEntries
             .map(
               (entry, i) =>
                 `<div class="log-entry">
@@ -419,10 +552,23 @@
                     <span class="log-event-name">${escapeHtml(entry.event.hook_event_name)}${entry.event.tool_name ? ": " + escapeHtml(entry.event.tool_name) : ""}</span>
                     <button class="log-expand-btn" data-index="${i}" title="Toggle payload"><i class="codicon codicon-chevron-right"></i></button>
                   </div>
-                  <div class="log-payload" data-index="${i}"><pre>${escapeHtml(JSON.stringify(entry.event, null, 2))}</pre></div>
+                  <div class="log-payload" data-index="${i}"><button class="log-copy-btn" data-index="${i}" title="Copy payload"><i class="codicon codicon-copy"></i></button><pre>${escapeHtml(JSON.stringify(entry.event, null, 2))}</pre></div>
                 </div>`
             )
             .join("")}</div>`;
+
+    // Touched files sidebar
+    const filesHtml = logsEditedFiles.length > 0
+      ? `<div class="files-list">${logsEditedFiles
+          .map(
+            (f) =>
+              `<button class="file-item" data-path="${escapeAttr(f)}" title="${escapeAttr(f)}">
+                <i class="codicon codicon-file"></i>
+                <span class="file-name">${escapeHtml(fileName(f))}</span>
+              </button>`
+          )
+          .join("")}</div>`
+      : `<div class="files-empty">No files edited yet.</div>`;
 
     terminalList.innerHTML = `<div class="logs-view">
       <div class="logs-header">
@@ -430,8 +576,17 @@
         <h2 class="logs-title">${escapeHtml(logsTerminalName)}</h2>
         <span class="logs-count">${filtered.length} of ${eventLogs.length} events</span>
       </div>
-      ${filtersHtml}
-      ${entriesHtml}
+      <div class="logs-columns">
+        <div class="logs-col-files">
+          <h3 class="logs-col-heading"><i class="codicon codicon-files"></i> Touched Files <span class="logs-col-count">${logsEditedFiles.length}</span></h3>
+          ${filesHtml}
+        </div>
+        <div class="logs-col-events">
+          <h3 class="logs-col-heading"><i class="codicon codicon-output"></i> Event Log <span class="logs-col-count">${filtered.length}</span></h3>
+          ${filtersHtml}
+          ${entriesHtml}
+        </div>
+      </div>
     </div>`;
 
     // Back button
@@ -439,8 +594,17 @@
       currentView = "dashboard";
       logsTerminalId = null;
       eventLogs = [];
+      logsEditedFiles = [];
       activeEventFilters.clear();
       render();
+    });
+
+    // File click handlers
+    terminalList.querySelectorAll(".file-item").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const filePath = /** @type {HTMLElement} */ (btn).dataset.path;
+        vscode.postMessage({ type: "openFile", filePath });
+      });
     });
 
     // Filter checkboxes
@@ -478,6 +642,23 @@
         }
       });
     });
+
+    // Copy payload
+    terminalList.querySelectorAll(".log-copy-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const idx = Number(/** @type {HTMLElement} */ (btn).dataset.index);
+        const entry = reversedEntries[idx];
+        if (entry) {
+          navigator.clipboard.writeText(JSON.stringify(entry.event, null, 2));
+          const icon = btn.querySelector("i");
+          if (icon) {
+            icon.className = "codicon codicon-check";
+            setTimeout(() => { icon.className = "codicon codicon-copy"; }, 1500);
+          }
+        }
+      });
+    });
   }
 
   /**
@@ -504,8 +685,14 @@
   document.getElementById("newPlanTerminalBtn").addEventListener("click", () => {
     vscode.postMessage({ type: "newPlanTerminal" });
   });
+  document.getElementById("newWorktreeTerminalBtn").addEventListener("click", () => {
+    vscode.postMessage({ type: "newWorktreeTerminal" });
+  });
   document.getElementById("newPlainTerminalBtn").addEventListener("click", () => {
     vscode.postMessage({ type: "newPlainTerminal" });
+  });
+  document.getElementById("usageBtn").addEventListener("click", () => {
+    vscode.postMessage({ type: "fetchUsage" });
   });
 
   // Empty state button handlers
@@ -517,6 +704,9 @@
   });
   document.getElementById("emptyNewPlanTerminalBtn").addEventListener("click", () => {
     vscode.postMessage({ type: "newPlanTerminal" });
+  });
+  document.getElementById("emptyNewWorktreeTerminalBtn").addEventListener("click", () => {
+    vscode.postMessage({ type: "newWorktreeTerminal" });
   });
   document.getElementById("emptyNewPlainTerminalBtn").addEventListener("click", () => {
     vscode.postMessage({ type: "newPlainTerminal" });
