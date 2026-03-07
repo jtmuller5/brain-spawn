@@ -304,7 +304,7 @@ body {
 }
 
 .status-dot.waiting {
-  background: var(--vscode-editorInfo-foreground, #3794ff);
+  background: var(--vscode-editorError-foreground, #f14c4c);
   animation: pulse 1.5s ease-in-out infinite;
 }
 

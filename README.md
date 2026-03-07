@@ -8,24 +8,30 @@ Spawn a swarm of Claude terminals with a single command.
 
 ## Features
 
-- **Instant Swarm** — Launch 5 Claude terminals at once, each with a random name, icon, and color.
+- **Instant Swarm** — Launch a batch of Claude terminals at once, each with a random name, icon, and color (max 10).
 - **Add More** — Spawn additional terminals one at a time.
-- **Dashboard** — Monitor all your Claude terminals and their status from a built-in webview.
+- **Plan Mode** — Spawn a terminal in `--permission-mode plan` for read-only exploration.
+- **Worktree Mode** — Spawn a terminal with `--worktree` so Claude works on its own git branch.
+- **Fork Session** — Fork a running Claude session into a new terminal from the dashboard.
+- **Live Dashboard** — Monitor all terminals with real-time busy/idle/waiting status, chat history, edited files, and event logs via Claude Code hooks.
 - **Custom Command** — Override the default `claude` command via a single VS Code setting.
 
 ## Getting Started
 
 1. Install the extension.
 2. Press `Cmd+Shift+T` (`Ctrl+Shift+T` on Windows/Linux) or run **Brain Spawn: Launch** from the command palette.
-3. Five Claude terminals appear, ready to go.
+3. A batch of Claude terminals appear, ready to go.
+4. Run **Brain Spawn: Dashboard** to open the live monitoring dashboard.
 
 ## Commands
 
 | Command | Shortcut | Description |
 |---|---|---|
-| `Brain Spawn: Launch` | `Cmd+Shift+T` | Spawn 5 Claude terminals |
+| `Brain Spawn: Launch` | `Cmd+Shift+T` | Spawn a batch of Claude terminals |
 | `Brain Spawn: New Terminal` | — | Spawn 1 additional terminal |
-| `Brain Spawn: Dashboard` | — | Open the terminal status dashboard |
+| `Brain Spawn: New Plan Terminal` | — | Spawn a terminal in plan mode (read-only) |
+| `Brain Spawn: New Worktree Terminal` | — | Spawn a terminal with `--worktree` |
+| `Brain Spawn: Dashboard` | — | Open the live terminal monitoring dashboard |
 
 ## Settings
 

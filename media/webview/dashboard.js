@@ -29,6 +29,8 @@
   let activeTerminalId = null;
   /** @type {boolean} */
   let isClaudeCommand = true;
+  /** @type {string[]} Previous terminal IDs for detecting structural changes */
+  let prevTerminalIds = [];
 
   window.addEventListener("message", (event) => {
     const msg = event.data;
@@ -39,7 +41,11 @@
         if (currentView === "dashboard") {
           // Don't re-render while user is editing a name or description
           if (!terminalList.querySelector(".name-input, .description-input")) {
-            render();
+            if (structureChanged()) {
+              render();
+            } else {
+              updateExistingCards();
+            }
           }
         } else if (currentView === "logs" && logsTerminalId) {
           // Re-request logs for live updates
@@ -91,6 +97,90 @@
     });
   }
 
+  /**
+   * Check if the terminal list structure changed (different IDs or count).
+   * @returns {boolean}
+   */
+  function structureChanged() {
+    const ids = terminals.map((t) => t.terminalId);
+    if (ids.length !== prevTerminalIds.length) { return true; }
+    for (let i = 0; i < ids.length; i++) {
+      if (ids[i] !== prevTerminalIds[i]) { return true; }
+    }
+    return false;
+  }
+
+  /**
+   * Update existing cards in-place without replacing the full DOM.
+   * Only called when the terminal list structure hasn't changed.
+   */
+  function updateExistingCards() {
+    updateStatusSummary();
+
+    terminals.forEach((t) => {
+      const card = terminalList.querySelector(`.terminal-card[data-id="${CSS.escape(t.terminalId)}"]`);
+      if (!card) { return; }
+
+      // Update status class on card
+      const statusClass = t.status === "waiting" ? "waiting" : t.status === "busy" ? "busy" : "idle";
+      card.className = card.className.replace(/\bstatus-\w+/g, "") + ` status-${statusClass}`;
+
+      // Update status dot
+      const dot = card.querySelector(".status-dot");
+      if (dot) {
+        dot.className = `status-dot ${statusClass}`;
+        dot.title = t.status === "waiting" ? "Waiting for input" : t.status === "busy" ? "Busy" : "Idle";
+      }
+
+      // Update status label text
+      const statusEl = card.querySelector(".terminal-status");
+      if (statusEl) {
+        const statusLabel = t.status === "waiting" ? "Waiting for input" : t.status === "busy" ? "Busy" : "Idle";
+        const durationEl = statusEl.querySelector(".status-duration");
+        const durationText = durationEl ? durationEl.textContent : `(${formatDuration(Date.now() - t.statusSince)})`;
+        statusEl.innerHTML = `${statusLabel} <span class="status-duration">${durationText}</span>`;
+        /** @type {HTMLElement} */ (statusEl).dataset.since = String(t.statusSince);
+      }
+
+      // Update chat history
+      const chatMessages = t.chatHistory || [];
+      let chatEl = card.querySelector(".chat-history");
+      if (chatMessages.length > 0) {
+        const newChatHtml = chatMessages.map((m) => {
+          const roleClass = m.role === "user" ? "chat-user" : "chat-assistant";
+          const avatarLetter = m.role === "user" ? "U" : "A";
+          return `<div class="chat-row ${roleClass}"><span class="chat-avatar">${avatarLetter}</span><span class="chat-text">${renderMarkdown(m.text)}</span></div>`;
+        }).join("");
+
+        if (chatEl) {
+          const wasScrolledToBottom = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 30;
+          chatEl.innerHTML = newChatHtml;
+          if (wasScrolledToBottom) {
+            chatEl.scrollTop = chatEl.scrollHeight;
+          }
+        } else {
+          // No chat element yet — insert one
+          const div = document.createElement("div");
+          div.className = "chat-history";
+          div.dataset.id = t.terminalId;
+          div.innerHTML = newChatHtml;
+          card.appendChild(div);
+          div.scrollTop = div.scrollHeight;
+        }
+      } else if (chatEl) {
+        chatEl.remove();
+      }
+
+      // Update fork/export buttons visibility if sessionId changed
+      const hasForkBtn = !!card.querySelector(".fork-btn");
+      if (isClaudeCommand && t.sessionId && !hasForkBtn) {
+        // Need full re-render for structural button changes
+        render();
+        return;
+      }
+    });
+  }
+
   function render() {
     if (statusTimer) {
       clearInterval(statusTimer);
@@ -103,6 +193,7 @@
       emptyState.style.display = "";
       terminalList.style.display = "none";
       terminalList.innerHTML = "";
+      prevTerminalIds = [];
       return;
     }
 
@@ -243,6 +334,8 @@
         vscode.postMessage({ type: "requestLogs", terminalId: logsTerminalId });
       });
     });
+
+    prevTerminalIds = terminals.map((t) => t.terminalId);
 
     updateActiveCard();
     initDragAndDrop();

@@ -57,6 +57,11 @@
           "default": "claude",
           "description": "Command to run in each spawned terminal"
         },
+        "brainSpawn.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start terminal cleanup, hook server, and Claude monitoring when VS Code starts. When disabled, the extension stays dormant until you run a Brain Spawn command."
+        },
         "brainSpawn.openDashboardOnStart": {
           "type": "boolean",
           "default": false,

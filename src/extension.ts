@@ -12,44 +12,45 @@ let hookServer: HookServer | undefined;
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<void> {
+  const config = vscode.workspace.getConfiguration("brainSpawn");
   const terminalManager = new TerminalManager();
-
-  // Close all pre-existing terminals (VS Code restores them async after activation)
-  for (const terminal of vscode.window.terminals) {
-    terminal.dispose();
-  }
-  // Only dispose stale restored terminals briefly after activation
-  const staleTerminalListener = vscode.window.onDidOpenTerminal((terminal) => {
-    if (!terminalManager.isTracked(terminal)) {
-      terminal.dispose();
-    }
-  });
-  setTimeout(() => staleTerminalListener.dispose(), 3000);
-
-  // Claude monitoring
   const claudeMonitor = new ClaudeMonitor();
   setClaudeMonitor(claudeMonitor);
 
-  hookServer = new HookServer(claudeMonitor);
-  try {
-    await hookServer.start();
-    await writeHookConfig(hookServer.port);
-  } catch (err) {
-    vscode.window.showWarningMessage(
-      `Brain Spawn: Failed to start hook server: ${err}`
-    );
+  if (config.get<boolean>("autoStart", true)) {
+    // Close all pre-existing terminals (VS Code restores them async after activation)
+    for (const terminal of vscode.window.terminals) {
+      terminal.dispose();
+    }
+    // Only dispose stale restored terminals briefly after activation
+    const staleTerminalListener = vscode.window.onDidOpenTerminal((terminal) => {
+      if (!terminalManager.isTracked(terminal)) {
+        terminal.dispose();
+      }
+    });
+    setTimeout(() => staleTerminalListener.dispose(), 3000);
+
+    // Hook server for Claude monitoring
+    hookServer = new HookServer(claudeMonitor);
+    try {
+      await hookServer.start();
+      await writeHookConfig(hookServer.port);
+    } catch (err) {
+      vscode.window.showWarningMessage(
+        `Brain Spawn: Failed to start hook server: ${err}`
+      );
+    }
+
+    // Terminal close cleanup
+    context.subscriptions.push(terminalManager.startListening());
   }
 
-  // Terminal close cleanup
-  context.subscriptions.push(terminalManager.startListening());
-
-  // Commands
+  // Commands (always registered so the user can manually trigger)
   context.subscriptions.push(
     ...registerCommands(context, terminalManager, claudeMonitor)
   );
 
   // Auto-open dashboard
-  const config = vscode.workspace.getConfiguration("brainSpawn");
   if (config.get<boolean>("openDashboardOnStart")) {
     DashboardPanel.createOrShow(context, claudeMonitor, terminalManager);
   }

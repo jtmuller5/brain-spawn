@@ -9,7 +9,6 @@ export class DashboardPanel {
   private readonly monitor: ClaudeMonitor;
   private readonly terminalManager: TerminalManager;
   private disposables: vscode.Disposable[] = [];
-  private usageTimer: ReturnType<typeof setInterval> | undefined;
   private externalTerminals = new Map<string, vscode.Terminal>();
 
   static createOrShow(
@@ -87,10 +86,6 @@ export class DashboardPanel {
     });
     this.disposables.push(closeSub);
 
-    // Refresh usage every 5 minutes (no initial auto-fetch)
-    if (this.isClaudeCommand()) {
-      this.usageTimer = setInterval(() => this.fetchUsage(), 5 * 60 * 1000);
-    }
   }
 
   private isClaudeCommand(): boolean {
@@ -451,9 +446,6 @@ export class DashboardPanel {
 
   private dispose(): void {
     DashboardPanel.currentPanel = undefined;
-    if (this.usageTimer) {
-      clearInterval(this.usageTimer);
-    }
     this.panel.dispose();
     for (const d of this.disposables) {
       d.dispose();
