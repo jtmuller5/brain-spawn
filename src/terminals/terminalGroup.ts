@@ -57,6 +57,10 @@ export function setClaudeMonitor(monitor: ClaudeMonitor): void {
 
 const GROUP_NAME = "Brain Spawn";
 
+function getWorkspaceCwd(): string | undefined {
+  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
 export function launchNewTerminal(terminalManager: TerminalManager): void {
   const capacity = terminalManager.getRemainingCapacity();
   if (capacity === 0) {
@@ -67,6 +71,7 @@ export function launchNewTerminal(terminalManager: TerminalManager): void {
   const count = Math.min(4, capacity);
   const command = getCommand();
   const names = pickUnique(BRAIN_SPAWN_NAMES, count);
+  const cwd = getWorkspaceCwd();
 
   for (let i = 0; i < count; i++) {
     const def: TerminalDefinition = {
@@ -75,7 +80,7 @@ export function launchNewTerminal(terminalManager: TerminalManager): void {
       color: pick(RANDOM_COLORS),
       command,
     };
-    const terminal = createTerminal(def);
+    const terminal = createTerminal(def, cwd);
     terminalManager.track(GROUP_NAME, terminal);
     terminal.sendText(command);
   }
@@ -94,7 +99,8 @@ export function launchOneTerminal(terminalManager: TerminalManager): void {
     color: pick(RANDOM_COLORS),
     command,
   };
-  const terminal = createTerminal(def);
+  const cwd = getWorkspaceCwd();
+  const terminal = createTerminal(def, cwd);
   terminalManager.track(GROUP_NAME, terminal);
   terminal.sendText(command);
   terminal.show();
@@ -113,7 +119,8 @@ export function launchPlanTerminal(terminalManager: TerminalManager): void {
     color: pick(RANDOM_COLORS),
     command,
   };
-  const terminal = createTerminal(def);
+  const cwd = getWorkspaceCwd();
+  const terminal = createTerminal(def, cwd);
   terminalManager.track(GROUP_NAME, terminal);
   terminal.sendText(`${command} --permission-mode plan`);
   terminal.show();
@@ -132,7 +139,8 @@ export function launchWorktreeTerminal(terminalManager: TerminalManager): void {
     color: pick(RANDOM_COLORS),
     command,
   };
-  const terminal = createTerminal(def);
+  const cwd = getWorkspaceCwd();
+  const terminal = createTerminal(def, cwd);
   terminalManager.track(GROUP_NAME, terminal);
   terminal.sendText(`${command} --worktree`);
   terminal.show();
@@ -155,19 +163,24 @@ export function forkTerminal(
     color: pick(RANDOM_COLORS),
     command,
   };
-  const terminal = createTerminal(def);
+  const cwd = getWorkspaceCwd();
+  const terminal = createTerminal(def, cwd);
   terminalManager.track(GROUP_NAME, terminal);
   terminal.sendText(`${command} --resume ${sessionId} --fork-session`);
   terminal.show();
 }
 
-function createTerminal(def: TerminalDefinition): vscode.Terminal {
+function createTerminal(def: TerminalDefinition, cwd?: string): vscode.Terminal {
   const terminalId = crypto.randomUUID();
 
   const options: vscode.TerminalOptions = {
     name: def.name,
     iconPath: new vscode.ThemeIcon(def.icon ?? "terminal"),
   };
+
+  if (cwd) {
+    options.cwd = cwd;
+  }
 
   if (def.color) {
     const colorId = COLOR_MAP[def.color];
@@ -182,7 +195,7 @@ function createTerminal(def: TerminalDefinition): vscode.Terminal {
   options.env = env;
 
   if (claudeMonitor) {
-    claudeMonitor.registerTerminal(terminalId, def.name, GROUP_NAME, def.icon, def.color);
+    claudeMonitor.registerTerminal(terminalId, def.name, GROUP_NAME, def.icon, def.color, cwd);
   }
 
   return vscode.window.createTerminal(options);

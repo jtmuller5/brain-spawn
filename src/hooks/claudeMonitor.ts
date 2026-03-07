@@ -19,6 +19,7 @@ export interface ClaudeTerminalState {
   sessionId?: string;
   icon?: string;
   color?: string;
+  cwd?: string;
   createdAt: number;
   statusSince: number;
 }
@@ -76,7 +77,8 @@ export class ClaudeMonitor {
     name: string,
     groupName: string,
     icon?: string,
-    color?: string
+    color?: string,
+    cwd?: string
   ): void {
     const now = Date.now();
     this.states.set(terminalId, {
@@ -91,6 +93,7 @@ export class ClaudeMonitor {
       editedFiles: [],
       icon: icon ?? "terminal",
       color,
+      cwd,
       createdAt: now,
       statusSince: now,
     });

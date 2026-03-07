@@ -17,12 +17,27 @@ const HOOK_EVENTS = [
 const TOOL_MATCHER_EVENTS = new Set(["PreToolUse", "PostToolUse"]);
 const NOTIFICATION_MATCHER_EVENTS = new Set(["Notification"]);
 
-interface HookHandler {
-  type: string;
+// These events only support type: "command" hooks, not HTTP hooks
+const COMMAND_ONLY_EVENTS = new Set([
+  "SessionStart",
+  "SessionEnd",
+  "Notification",
+  "SubagentStart",
+]);
+
+interface HttpHookHandler {
+  type: "http";
   url: string;
   headers?: Record<string, string>;
   allowedEnvVars?: string[];
 }
+
+interface CommandHookHandler {
+  type: "command";
+  command: string;
+}
+
+type HookHandler = HttpHookHandler | CommandHookHandler;
 
 interface MatcherGroup {
   matcher?: string;
@@ -35,7 +50,7 @@ interface ClaudeSettings {
   [key: string]: unknown;
 }
 
-function buildHookHandler(port: number): HookHandler {
+function buildHttpHandler(port: number): HttpHookHandler {
   return {
     type: "http",
     url: `http://127.0.0.1:${port}/hooks`,
@@ -46,10 +61,21 @@ function buildHookHandler(port: number): HookHandler {
   };
 }
 
+function buildCommandHandler(port: number): CommandHookHandler {
+  // For events that only support command hooks, use curl to POST to our HTTP server.
+  // Pipe stdin (the hook JSON) as the request body.
+  return {
+    type: "command",
+    command: `cat | curl -s -X POST -H "Content-Type: application/json" -H "X-Terminal-Id: $BRAIN_SPAWN_TERMINAL_ID" -d @- http://127.0.0.1:${port}/hooks > /dev/null 2>&1; exit 0`,
+  };
+}
+
 function buildHooks(port: number): Record<string, MatcherGroup[]> {
-  const handler = buildHookHandler(port);
+  const httpHandler = buildHttpHandler(port);
+  const cmdHandler = buildCommandHandler(port);
   const hooks: Record<string, MatcherGroup[]> = {};
   for (const event of HOOK_EVENTS) {
+    const handler = COMMAND_ONLY_EVENTS.has(event) ? cmdHandler : httpHandler;
     const group: MatcherGroup = {
       hooks: [handler],
       _marker: BRAIN_SPAWN_MARKER,
@@ -69,6 +95,42 @@ function buildHooks(port: number): Record<string, MatcherGroup[]> {
 
 function getSettingsPath(workspaceFolder: vscode.Uri): string {
   return path.join(workspaceFolder.fsPath, ".claude", "settings.local.json");
+}
+
+export async function findExistingHookPort(): Promise<number | undefined> {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders) {
+    return undefined;
+  }
+
+  for (const folder of folders) {
+    const settingsPath = getSettingsPath(folder.uri);
+    try {
+      const content = await fs.promises.readFile(settingsPath, "utf-8");
+      const settings: ClaudeSettings = JSON.parse(content);
+      if (!settings.hooks) {
+        continue;
+      }
+      for (const groups of Object.values(settings.hooks)) {
+        for (const group of groups) {
+          if (group._marker !== BRAIN_SPAWN_MARKER) {
+            continue;
+          }
+          for (const hook of group.hooks) {
+            if (hook.type === "http" && (hook as HttpHookHandler).url) {
+              const match = (hook as HttpHookHandler).url.match(/:(\d+)\//);
+              if (match) {
+                return parseInt(match[1], 10);
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
 }
 
 export async function writeHookConfig(port: number): Promise<void> {

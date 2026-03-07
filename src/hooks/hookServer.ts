@@ -14,7 +14,10 @@ export class HookServer {
   start(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.server = http.createServer((req, res) => {
-        if (req.method === "POST" && req.url === "/hooks") {
+        if (req.method === "GET" && req.url === "/health") {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ status: "ok", name: "brain-spawn" }));
+        } else if (req.method === "POST" && req.url === "/hooks") {
           this.handleHook(req, res);
         } else {
           res.writeHead(404);

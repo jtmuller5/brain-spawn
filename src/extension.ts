@@ -1,13 +1,37 @@
 import * as vscode from "vscode";
+import * as http from "http";
 import { TerminalManager } from "./terminals/terminalManager";
 import { registerCommands } from "./commands/registerCommands";
 import { DashboardPanel } from "./webview/dashboardPanel";
 import { ClaudeMonitor } from "./hooks/claudeMonitor";
 import { HookServer } from "./hooks/hookServer";
-import { writeHookConfig, removeHookConfig } from "./hooks/hookConfigWriter";
+import { writeHookConfig, removeHookConfig, findExistingHookPort } from "./hooks/hookConfigWriter";
 import { setClaudeMonitor } from "./terminals/terminalGroup";
 
 let hookServer: HookServer | undefined;
+
+function isHookServerAlive(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.request(
+      { host: "127.0.0.1", port, path: "/health", method: "GET", timeout: 1000 },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+        res.on("end", () => {
+          try {
+            const data = JSON.parse(body);
+            resolve(data.name === "brain-spawn");
+          } catch {
+            resolve(false);
+          }
+        });
+      }
+    );
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => { req.destroy(); resolve(false); });
+    req.end();
+  });
+}
 
 export async function activate(
   context: vscode.ExtensionContext
@@ -17,28 +41,28 @@ export async function activate(
   const claudeMonitor = new ClaudeMonitor();
   setClaudeMonitor(claudeMonitor);
 
-  if (config.get<boolean>("autoStart", true)) {
-    // Close all pre-existing terminals (VS Code restores them async after activation)
-    for (const terminal of vscode.window.terminals) {
-      terminal.dispose();
-    }
-    // Only dispose stale restored terminals briefly after activation
-    const staleTerminalListener = vscode.window.onDidOpenTerminal((terminal) => {
-      if (!terminalManager.isTracked(terminal)) {
-        terminal.dispose();
-      }
-    });
-    setTimeout(() => staleTerminalListener.dispose(), 3000);
+  let ownsHookServer = false;
 
-    // Hook server for Claude monitoring
-    hookServer = new HookServer(claudeMonitor);
-    try {
-      await hookServer.start();
-      await writeHookConfig(hookServer.port);
-    } catch (err) {
-      vscode.window.showWarningMessage(
-        `Brain Spawn: Failed to start hook server: ${err}`
-      );
+  if (config.get<boolean>("autoStart", true)) {
+    // Check if another Brain Spawn window already has a hook server running
+    const existingPort = await findExistingHookPort();
+    const existingAlive = existingPort ? await isHookServerAlive(existingPort) : false;
+
+    if (existingAlive) {
+      // Reuse existing server — just ensure hook configs point to it
+      await writeHookConfig(existingPort!);
+    } else {
+      // Start our own hook server
+      hookServer = new HookServer(claudeMonitor);
+      try {
+        await hookServer.start();
+        await writeHookConfig(hookServer.port);
+        ownsHookServer = true;
+      } catch (err) {
+        vscode.window.showWarningMessage(
+          `Brain Spawn: Failed to start hook server: ${err}`
+        );
+      }
     }
 
     // Terminal close cleanup
@@ -50,8 +74,8 @@ export async function activate(
     ...registerCommands(context, terminalManager, claudeMonitor)
   );
 
-  // Auto-open dashboard
-  if (config.get<boolean>("openDashboardOnStart")) {
+  // Auto-open dashboard only if we own the hook server (avoid duplicate dashboards)
+  if (config.get<boolean>("openDashboardOnStart") && ownsHookServer) {
     DashboardPanel.createOrShow(context, claudeMonitor, terminalManager);
   }
 
