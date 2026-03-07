@@ -368,6 +368,11 @@ body {
   opacity: 0.5;
 }
 
+.terminal-cwd .codicon {
+  font-size: 0.9em;
+  margin-right: 2px;
+}
+
 .description-input {
   font-family: var(--vscode-font-family);
   font-size: 0.8em;

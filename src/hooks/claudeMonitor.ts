@@ -71,6 +71,7 @@ export class ClaudeMonitor {
   private sessionEndTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private changeCallbacks: (() => void)[] = [];
   private externalTerminalCallbacks: ((terminalId: string) => void)[] = [];
+  private suppressUnknownUntil = 0;
 
   registerTerminal(
     terminalId: string,
@@ -140,6 +141,9 @@ export class ClaudeMonitor {
     let state = this.states.get(terminalId);
 
     // If we don't have a registered terminal for this ID, create one for external Claude sessions
+    if (!state && Date.now() < this.suppressUnknownUntil) {
+      return;
+    }
     if (!state) {
       const now = Date.now();
       state = {
@@ -263,6 +267,10 @@ export class ClaudeMonitor {
     }
 
     this.notifyChange();
+  }
+
+  suppressUnknownTerminals(durationMs = 10000): void {
+    this.suppressUnknownUntil = Date.now() + durationMs;
   }
 
   setDescription(terminalId: string, description: string): void {

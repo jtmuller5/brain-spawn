@@ -40,6 +40,10 @@
       {
         "command": "brainSpawn.openDashboard",
         "title": "Brain Spawn: Dashboard"
+      },
+      {
+        "command": "brainSpawn.closeUntracked",
+        "title": "Brain Spawn: Close Untracked Terminals"
       }
     ],
     "keybindings": [

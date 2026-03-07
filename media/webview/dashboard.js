@@ -252,6 +252,7 @@
                   <span class="terminal-status" data-since="${t.statusSince}">${statusLabel} <span class="status-duration">(${durationText})</span></span>
                   <span class="terminal-meta-sep">&middot;</span>
                   <span>${createdLabel}</span>
+                  ${t.cwd ? `<span class="terminal-meta-sep">&middot;</span><span class="terminal-cwd" title="${escapeAttr(t.cwd)}"><i class="codicon codicon-folder"></i> ${escapeHtml(t.cwd.split("/").pop() || t.cwd)}</span>` : ""}
                 </span>
               </div>
             </div>

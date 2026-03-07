@@ -27,5 +27,18 @@ export function registerCommands(
         DashboardPanel.createOrShow(context, claudeMonitor, terminalManager);
       }
     }),
+    vscode.commands.registerCommand("brainSpawn.closeUntracked", () => {
+      const allTerminals = vscode.window.terminals;
+      const untracked = allTerminals.filter(t => !terminalManager.isTracked(t));
+      if (untracked.length > 0) {
+        claudeMonitor?.suppressUnknownTerminals();
+        for (const t of untracked) {
+          t.dispose();
+        }
+        vscode.window.showInformationMessage(`Closed ${untracked.length} untracked terminal(s).`);
+      } else {
+        vscode.window.showInformationMessage("No untracked terminals to close.");
+      }
+    }),
   ];
 }

@@ -57,21 +57,32 @@ export function setClaudeMonitor(monitor: ClaudeMonitor): void {
 
 const GROUP_NAME = "Brain Spawn";
 
-function getWorkspaceCwd(): string | undefined {
-  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+async function pickWorkspaceCwd(): Promise<string | undefined> {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) {
+    return undefined;
+  }
+  if (folders.length === 1) {
+    return folders[0].uri.fsPath;
+  }
+  const picked = await vscode.window.showQuickPick(
+    folders.map((f) => ({ label: f.name, description: f.uri.fsPath, folder: f })),
+    { placeHolder: "Select workspace folder for new terminal" }
+  );
+  return picked?.folder.uri.fsPath;
 }
 
-export function launchNewTerminal(terminalManager: TerminalManager): void {
+export async function launchNewTerminal(terminalManager: TerminalManager): Promise<void> {
   const capacity = terminalManager.getRemainingCapacity();
   if (capacity === 0) {
     vscode.window.showWarningMessage("Terminal limit reached (max 10). Close some terminals first.");
     return;
   }
 
+  const cwd = await pickWorkspaceCwd();
   const count = Math.min(4, capacity);
   const command = getCommand();
   const names = pickUnique(BRAIN_SPAWN_NAMES, count);
-  const cwd = getWorkspaceCwd();
 
   for (let i = 0; i < count; i++) {
     const def: TerminalDefinition = {
@@ -86,12 +97,13 @@ export function launchNewTerminal(terminalManager: TerminalManager): void {
   }
 }
 
-export function launchOneTerminal(terminalManager: TerminalManager): void {
+export async function launchOneTerminal(terminalManager: TerminalManager): Promise<void> {
   if (terminalManager.getRemainingCapacity() === 0) {
     vscode.window.showWarningMessage("Terminal limit reached (max 10). Close some terminals first.");
     return;
   }
 
+  const cwd = await pickWorkspaceCwd();
   const command = getCommand();
   const def: TerminalDefinition = {
     name: pick(BRAIN_SPAWN_NAMES),
@@ -99,19 +111,19 @@ export function launchOneTerminal(terminalManager: TerminalManager): void {
     color: pick(RANDOM_COLORS),
     command,
   };
-  const cwd = getWorkspaceCwd();
   const terminal = createTerminal(def, cwd);
   terminalManager.track(GROUP_NAME, terminal);
   terminal.sendText(command);
   terminal.show();
 }
 
-export function launchPlanTerminal(terminalManager: TerminalManager): void {
+export async function launchPlanTerminal(terminalManager: TerminalManager): Promise<void> {
   if (terminalManager.getRemainingCapacity() === 0) {
     vscode.window.showWarningMessage("Terminal limit reached (max 10). Close some terminals first.");
     return;
   }
 
+  const cwd = await pickWorkspaceCwd();
   const command = getCommand();
   const def: TerminalDefinition = {
     name: pick(BRAIN_SPAWN_NAMES),
@@ -119,19 +131,19 @@ export function launchPlanTerminal(terminalManager: TerminalManager): void {
     color: pick(RANDOM_COLORS),
     command,
   };
-  const cwd = getWorkspaceCwd();
   const terminal = createTerminal(def, cwd);
   terminalManager.track(GROUP_NAME, terminal);
   terminal.sendText(`${command} --permission-mode plan`);
   terminal.show();
 }
 
-export function launchWorktreeTerminal(terminalManager: TerminalManager): void {
+export async function launchWorktreeTerminal(terminalManager: TerminalManager): Promise<void> {
   if (terminalManager.getRemainingCapacity() === 0) {
     vscode.window.showWarningMessage("Terminal limit reached (max 10). Close some terminals first.");
     return;
   }
 
+  const cwd = await pickWorkspaceCwd();
   const command = getCommand();
   const def: TerminalDefinition = {
     name: pick(BRAIN_SPAWN_NAMES),
@@ -139,23 +151,23 @@ export function launchWorktreeTerminal(terminalManager: TerminalManager): void {
     color: pick(RANDOM_COLORS),
     command,
   };
-  const cwd = getWorkspaceCwd();
   const terminal = createTerminal(def, cwd);
   terminalManager.track(GROUP_NAME, terminal);
   terminal.sendText(`${command} --worktree`);
   terminal.show();
 }
 
-export function forkTerminal(
+export async function forkTerminal(
   terminalManager: TerminalManager,
   sessionId: string,
   parentName?: string
-): void {
+): Promise<void> {
   if (terminalManager.getRemainingCapacity() === 0) {
     vscode.window.showWarningMessage("Terminal limit reached (max 10). Close some terminals first.");
     return;
   }
 
+  const cwd = await pickWorkspaceCwd();
   const command = getCommand();
   const def: TerminalDefinition = {
     name: parentName ? `${parentName} (fork)` : pick(BRAIN_SPAWN_NAMES),
@@ -163,7 +175,6 @@ export function forkTerminal(
     color: pick(RANDOM_COLORS),
     command,
   };
-  const cwd = getWorkspaceCwd();
   const terminal = createTerminal(def, cwd);
   terminalManager.track(GROUP_NAME, terminal);
   terminal.sendText(`${command} --resume ${sessionId} --fork-session`);
