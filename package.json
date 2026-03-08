@@ -59,7 +59,26 @@
         "brainSpawn.command": {
           "type": "string",
           "default": "claude",
-          "description": "Command to run in each spawned terminal"
+          "description": "Default command to run in each spawned terminal (deprecated — use brainSpawn.commands instead)"
+        },
+        "brainSpawn.commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Display name for the command (e.g. \"Claude\", \"Pi\")"
+              },
+              "command": {
+                "type": "string",
+                "description": "Command to run in the terminal (e.g. \"claude\", \"pi\")"
+              }
+            },
+            "required": ["name", "command"]
+          },
+          "default": [],
+          "description": "List of commands available for spawning terminals. The first entry is used as the default. If empty, falls back to brainSpawn.command."
         },
         "brainSpawn.autoStart": {
           "type": "boolean",

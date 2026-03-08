@@ -29,6 +29,8 @@
   let activeTerminalId = null;
   /** @type {boolean} */
   let isClaudeCommand = true;
+  /** @type {Array<{name: string, command: string}>} */
+  let commands = [];
   /** @type {string[]} Previous terminal IDs for detecting structural changes */
   let prevTerminalIds = [];
 
@@ -38,6 +40,7 @@
       case "state":
         terminals = msg.terminals || [];
         isClaudeCommand = msg.isClaudeCommand !== false;
+        commands = msg.commands || [];
         if (currentView === "dashboard") {
           // Don't re-render while user is editing a name or description
           if (!terminalList.querySelector(".name-input, .description-input")) {
@@ -262,20 +265,31 @@
         </div>`;
       })
       .join("")
-      + `<div class="terminal-card new-brain-card" title="New brain">
-          <i class="codicon codicon-add new-brain-icon"></i>
-          <span class="new-brain-label">New Brain</span>
-        </div>`;
+      + (commands.length > 1
+          ? commands.map((cmd, i) =>
+              `<div class="terminal-card new-brain-card" data-command="${escapeAttr(cmd.command)}" title="New ${escapeAttr(cmd.name)} terminal">
+                <i class="codicon codicon-add new-brain-icon"></i>
+                <span class="new-brain-label">${escapeHtml(cmd.name)}</span>
+              </div>`
+            ).join("")
+          : `<div class="terminal-card new-brain-card" title="New brain">
+              <i class="codicon codicon-add new-brain-icon"></i>
+              <span class="new-brain-label">New Brain</span>
+            </div>`);
 
     statusTimer = setInterval(updateStatusDurations, 1000);
 
-    // New brain card
-    const newBrainCard = terminalList.querySelector(".new-brain-card");
-    if (newBrainCard) {
-      newBrainCard.addEventListener("click", () => {
-        vscode.postMessage({ type: "newTerminal" });
+    // New brain cards
+    terminalList.querySelectorAll(".new-brain-card").forEach((card) => {
+      card.addEventListener("click", () => {
+        const cmd = /** @type {HTMLElement} */ (card).dataset.command;
+        if (cmd) {
+          vscode.postMessage({ type: "newTerminalWithCommand", command: cmd });
+        } else {
+          vscode.postMessage({ type: "newTerminal" });
+        }
       });
-    }
+    });
 
     // Bind click handlers — clicking the card opens the terminal
     terminalList.querySelectorAll(".terminal-card:not(.new-brain-card)").forEach((card) => {

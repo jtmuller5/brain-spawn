@@ -45,8 +45,23 @@ function pickUnique<T>(arr: T[], count: number): T[] {
   return shuffled.slice(0, count);
 }
 
+export interface CommandEntry {
+  name: string;
+  command: string;
+}
+
+export function getCommands(): CommandEntry[] {
+  const config = vscode.workspace.getConfiguration("brainSpawn");
+  const commands = config.get<CommandEntry[]>("commands", []);
+  if (commands.length > 0) {
+    return commands;
+  }
+  const legacy = config.get<string>("command", "claude");
+  return [{ name: legacy, command: legacy }];
+}
+
 function getCommand(): string {
-  return vscode.workspace.getConfiguration("brainSpawn").get<string>("command", "claude");
+  return getCommands()[0].command;
 }
 
 let claudeMonitor: ClaudeMonitor | undefined;
@@ -105,6 +120,28 @@ export async function launchOneTerminal(terminalManager: TerminalManager): Promi
 
   const cwd = await pickWorkspaceCwd();
   const command = getCommand();
+  const def: TerminalDefinition = {
+    name: pick(BRAIN_SPAWN_NAMES),
+    icon: pick(RANDOM_ICONS),
+    color: pick(RANDOM_COLORS),
+    command,
+  };
+  const terminal = createTerminal(def, cwd);
+  terminalManager.track(GROUP_NAME, terminal);
+  terminal.sendText(command);
+  terminal.show();
+}
+
+export async function launchOneTerminalWithCommand(
+  terminalManager: TerminalManager,
+  command: string
+): Promise<void> {
+  if (terminalManager.getRemainingCapacity() === 0) {
+    vscode.window.showWarningMessage("Terminal limit reached (max 10). Close some terminals first.");
+    return;
+  }
+
+  const cwd = await pickWorkspaceCwd();
   const def: TerminalDefinition = {
     name: pick(BRAIN_SPAWN_NAMES),
     icon: pick(RANDOM_ICONS),

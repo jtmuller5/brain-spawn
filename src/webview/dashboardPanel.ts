@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { ClaudeMonitor } from "../hooks/claudeMonitor";
 import { TerminalManager } from "../terminals/terminalManager";
-import { forkTerminal } from "../terminals/terminalGroup";
+import { forkTerminal, getCommands, launchOneTerminalWithCommand } from "../terminals/terminalGroup";
 
 export class DashboardPanel {
   private static currentPanel: DashboardPanel | undefined;
@@ -101,6 +101,7 @@ export class DashboardPanel {
       type: "state",
       terminals: this.monitor.getStates(),
       isClaudeCommand: this.isClaudeCommand(),
+      commands: getCommands(),
     });
     this.sendActiveTerminalId(vscode.window.activeTerminal);
   }
@@ -136,6 +137,7 @@ export class DashboardPanel {
     description?: string;
     name?: string;
     filePath?: string;
+    command?: string;
   }): void {
     switch (msg.type) {
       case "ready":
@@ -181,6 +183,11 @@ export class DashboardPanel {
         break;
       case "newWorktreeTerminal":
         vscode.commands.executeCommand("brainSpawn.newWorktreeTerminal");
+        break;
+      case "newTerminalWithCommand":
+        if (msg.command) {
+          launchOneTerminalWithCommand(this.terminalManager, msg.command);
+        }
         break;
       case "newPlainTerminal": {
         if (this.terminalManager.getRemainingCapacity() === 0) {
