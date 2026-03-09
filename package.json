@@ -2,7 +2,7 @@
   "name": "brain-spawn",
   "displayName": "Brain Spawn",
   "description": "Define and launch groups of pre-configured terminals with a single command",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "publisher": "CodeontheRocks",
   "repository": {
     "type": "git",
@@ -79,7 +79,10 @@
                 "description": "Command to run in the terminal (e.g. \"claude\", \"pi\")"
               }
             },
-            "required": ["name", "command"]
+            "required": [
+              "name",
+              "command"
+            ]
           },
           "default": [],
           "description": "List of commands available for spawning terminals. The first entry is used as the default. If empty, falls back to brainSpawn.command."
