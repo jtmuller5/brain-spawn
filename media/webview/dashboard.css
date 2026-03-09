@@ -577,6 +577,11 @@ body {
   border-color: var(--vscode-inputValidation-errorBorder, #be1100);
 }
 
+.save-likeness-btn.saving {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
 /* ── Logs View ── */
 
 .logs-view {

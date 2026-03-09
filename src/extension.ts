@@ -5,10 +5,11 @@ import { registerCommands } from "./commands/registerCommands";
 import { DashboardPanel } from "./webview/dashboardPanel";
 import { ClaudeMonitor } from "./hooks/claudeMonitor";
 import { HookServer } from "./hooks/hookServer";
-import { writeHookConfig, removeHookConfig, findExistingHookPort } from "./hooks/hookConfigWriter";
+import { writeHookConfig, removeHookConfig, findExistingHookPort, hooksPresent } from "./hooks/hookConfigWriter";
 import { setClaudeMonitor } from "./terminals/terminalGroup";
 
 let hookServer: HookServer | undefined;
+let activeHookPort: number | undefined;
 
 function isHookServerAlive(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -50,13 +51,15 @@ export async function activate(
 
     if (existingAlive) {
       // Reuse existing server — just ensure hook configs point to it
-      await writeHookConfig(existingPort!);
+      activeHookPort = existingPort!;
+      await writeHookConfig(activeHookPort);
     } else {
       // Start our own hook server
       hookServer = new HookServer(claudeMonitor);
       try {
         await hookServer.start();
-        await writeHookConfig(hookServer.port);
+        activeHookPort = hookServer.port;
+        await writeHookConfig(activeHookPort);
         ownsHookServer = true;
       } catch (err) {
         vscode.window.showWarningMessage(
@@ -65,13 +68,38 @@ export async function activate(
       }
     }
 
+    // Watch for settings.local.json changes and reinstall hooks if missing
+    if (activeHookPort) {
+      const watcher = vscode.workspace.createFileSystemWatcher(
+        "**/.claude/settings.local.json"
+      );
+      let reinstalling = false;
+      const checkAndReinstall = async () => {
+        if (reinstalling || !activeHookPort) {
+          return;
+        }
+        reinstalling = true;
+        try {
+          if (!(await hooksPresent())) {
+            await writeHookConfig(activeHookPort);
+          }
+        } finally {
+          reinstalling = false;
+        }
+      };
+      watcher.onDidChange(checkAndReinstall);
+      watcher.onDidCreate(checkAndReinstall);
+      watcher.onDidDelete(checkAndReinstall);
+      context.subscriptions.push(watcher);
+    }
+
     // Terminal close cleanup
     context.subscriptions.push(terminalManager.startListening());
   }
 
   // Commands (always registered so the user can manually trigger)
   context.subscriptions.push(
-    ...registerCommands(context, terminalManager, claudeMonitor)
+    ...registerCommands(context, terminalManager, claudeMonitor, () => activeHookPort)
   );
 
   // Auto-open dashboard only if we own the hook server (avoid duplicate dashboards)

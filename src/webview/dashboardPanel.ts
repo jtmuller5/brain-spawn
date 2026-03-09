@@ -1,4 +1,7 @@
 import * as vscode from "vscode";
+import * as cp from "child_process";
+import * as path from "path";
+import * as fs from "fs";
 import { ClaudeMonitor } from "../hooks/claudeMonitor";
 import { TerminalManager } from "../terminals/terminalManager";
 import { forkTerminal, getCommands, launchOneTerminalWithCommand } from "../terminals/terminalGroup";
@@ -138,6 +141,7 @@ export class DashboardPanel {
     name?: string;
     filePath?: string;
     command?: string;
+    orderedIds?: string[];
   }): void {
     switch (msg.type) {
       case "ready":
@@ -243,6 +247,11 @@ export class DashboardPanel {
           vscode.window.showTextDocument(uri, { preview: true });
         }
         break;
+      case "saveLikeness":
+        if (msg.terminalId) {
+          this.saveLikeness(msg.terminalId);
+        }
+        break;
     }
   }
 
@@ -309,6 +318,158 @@ export class DashboardPanel {
     this.externalTerminals.delete(terminalId);
     this.monitor.unregisterTerminal(terminalId);
     this.sendState();
+  }
+
+  private async saveLikeness(terminalId: string): Promise<void> {
+    const state = this.monitor
+      .getStates()
+      .find((s) => s.terminalId === terminalId);
+    if (!state || state.editedFiles.length === 0) {
+      this.panel.webview.postMessage({
+        type: "saveLikenessResult",
+        terminalId,
+        error: "No touched files to save.",
+      });
+      return;
+    }
+
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) {
+      vscode.window.showErrorMessage("No workspace folder open.");
+      this.panel.webview.postMessage({
+        type: "saveLikenessResult",
+        terminalId,
+        error: "No workspace folder.",
+      });
+      return;
+    }
+
+    // Build context for Claude
+    const chatText = state.chatHistory
+      .map((m) => `${m.role}: ${m.text}`)
+      .join("\n");
+    const fileList = state.editedFiles.join("\n");
+
+    const prompt = `You are generating metadata for a coding session snapshot called a "likeness". Given the chat history and list of touched files below, produce a JSON object with exactly two fields:
+- "name": a short, descriptive kebab-case name for this work (e.g. "add-user-auth", "fix-sidebar-layout"). Max 50 chars.
+- "description": a one-sentence summary of what was accomplished. Max 200 chars.
+
+Chat history:
+${chatText}
+
+Touched files:
+${fileList}
+
+Respond with ONLY the JSON object, no markdown fences or extra text.`;
+
+    try {
+      const result = await new Promise<string>((resolve, reject) => {
+        const proc = cp.spawn("claude", ["-p", prompt], {
+          cwd: workspaceFolder,
+          env: { ...process.env },
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+
+        let stdout = "";
+        let stderr = "";
+        proc.stdout.on("data", (data: Buffer) => {
+          stdout += data.toString();
+        });
+        proc.stderr.on("data", (data: Buffer) => {
+          stderr += data.toString();
+        });
+        proc.on("close", (code) => {
+          if (code === 0) {
+            resolve(stdout.trim());
+          } else {
+            reject(new Error(stderr || `claude exited with code ${code}`));
+          }
+        });
+        proc.on("error", reject);
+      });
+
+      // Parse the JSON response
+      // Strip markdown fences if present
+      let jsonStr = result;
+      const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenceMatch) {
+        jsonStr = fenceMatch[1].trim();
+      }
+
+      let generated: { name: string; description?: string };
+      try {
+        generated = JSON.parse(jsonStr);
+      } catch {
+        // Fallback: use terminal name
+        generated = {
+          name: state.terminalName.toLowerCase().replace(/\s+/g, "-"),
+          description: result.slice(0, 200),
+        };
+      }
+
+      // Let user confirm/edit the name
+      const name = await vscode.window.showInputBox({
+        prompt: "Likeness name",
+        value: generated.name,
+        validateInput: (v) =>
+          v.trim().length === 0 ? "Name is required" : undefined,
+      });
+
+      if (!name) {
+        // User cancelled
+        this.panel.webview.postMessage({
+          type: "saveLikenessResult",
+          terminalId,
+          error: "Cancelled.",
+        });
+        return;
+      }
+
+      // Let user confirm/edit the description
+      const description = await vscode.window.showInputBox({
+        prompt: "Likeness description (optional)",
+        value: generated.description || "",
+      });
+
+      // Build the likeness object
+      const likeness = {
+        name,
+        description: description || undefined,
+        files: state.editedFiles,
+        createdAt: new Date().toISOString(),
+      };
+
+      // Save to .brain-spawn/ folder
+      const brainSpawnDir = path.join(workspaceFolder, ".brain-spawn");
+      if (!fs.existsSync(brainSpawnDir)) {
+        fs.mkdirSync(brainSpawnDir, { recursive: true });
+      }
+
+      const slug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+      const filePath = path.join(brainSpawnDir, `${slug}.json`);
+
+      fs.writeFileSync(filePath, JSON.stringify(likeness, null, 2) + "\n");
+
+      vscode.window.showInformationMessage(`Likeness saved: ${slug}.json`);
+      this.panel.webview.postMessage({
+        type: "saveLikenessResult",
+        terminalId,
+        error: null,
+      });
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Unknown error";
+      vscode.window.showErrorMessage(`Failed to save likeness: ${message}`);
+      this.panel.webview.postMessage({
+        type: "saveLikenessResult",
+        terminalId,
+        error: message,
+      });
+    }
   }
 
   private async renameTerminal(

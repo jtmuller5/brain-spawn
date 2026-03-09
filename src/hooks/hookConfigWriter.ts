@@ -133,6 +133,34 @@ export async function findExistingHookPort(): Promise<number | undefined> {
   return undefined;
 }
 
+export async function hooksPresent(): Promise<boolean> {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders) {
+    return false;
+  }
+
+  for (const folder of folders) {
+    const settingsPath = getSettingsPath(folder.uri);
+    try {
+      const content = await fs.promises.readFile(settingsPath, "utf-8");
+      const settings: ClaudeSettings = JSON.parse(content);
+      if (!settings.hooks) {
+        return false;
+      }
+      // Check that every expected event has a brain-spawn marker group
+      for (const event of HOOK_EVENTS) {
+        const groups = settings.hooks[event];
+        if (!groups || !groups.some((g: MatcherGroup) => g._marker === BRAIN_SPAWN_MARKER)) {
+          return false;
+        }
+      }
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
 export async function writeHookConfig(port: number): Promise<void> {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders) {

@@ -7,7 +7,7 @@
   const terminalList = document.getElementById("terminalList");
   const statusSummary = document.getElementById("statusSummary");
 
-  /** @type {Array<{terminalId: string, terminalName: string, groupName: string, description: string, status: string, lastMessage: string, lastMessageSource: string, chatHistory: Array<{role: string, text: string, timestamp: number}>, sessionId?: string, icon?: string, color?: string, createdAt: number, statusSince: number}>} */
+  /** @type {Array<{terminalId: string, terminalName: string, groupName: string, description: string, status: string, lastMessage: string, lastMessageSource: string, chatHistory: Array<{role: string, text: string, timestamp: number}>, editedFiles: string[], sessionId?: string, icon?: string, color?: string, createdAt: number, statusSince: number}>} */
   let terminals = [];
   /** @type {number | null} */
   let statusTimer = null;
@@ -69,6 +69,20 @@
         logsEditedFiles = msg.editedFiles || [];
         renderLogsView();
         break;
+      case "saveLikenessResult": {
+        const saveBtn = terminalList.querySelector(`.save-likeness-btn[data-id="${CSS.escape(msg.terminalId)}"]`);
+        if (saveBtn) {
+          const icon = saveBtn.querySelector("i");
+          if (msg.error) {
+            if (icon) { icon.className = "codicon codicon-error"; }
+            setTimeout(() => { if (icon) { icon.className = "codicon codicon-bookmark"; } saveBtn.classList.remove("saving"); }, 2000);
+          } else {
+            if (icon) { icon.className = "codicon codicon-check"; }
+            setTimeout(() => { if (icon) { icon.className = "codicon codicon-bookmark"; } saveBtn.classList.remove("saving"); }, 2000);
+          }
+        }
+        break;
+      }
     }
   });
 
@@ -174,10 +188,31 @@
         chatEl.remove();
       }
 
+      // Update description
+      const descEl = card.querySelector(".terminal-description");
+      if (descEl) {
+        if (t.description) {
+          descEl.textContent = t.description;
+          descEl.classList.remove("placeholder");
+          descEl.title = "Click to edit description";
+        } else {
+          descEl.textContent = "Add description...";
+          descEl.classList.add("placeholder");
+          descEl.title = "Click to add a description";
+        }
+      }
+
       // Update fork/export buttons visibility if sessionId changed
       const hasForkBtn = !!card.querySelector(".fork-btn");
       if (isClaudeCommand && t.sessionId && !hasForkBtn) {
         // Need full re-render for structural button changes
+        render();
+        return;
+      }
+
+      // Show save-likeness button if files were edited
+      const hasSaveBtn = !!card.querySelector(".save-likeness-btn");
+      if (t.editedFiles && t.editedFiles.length > 0 && !hasSaveBtn) {
         render();
         return;
       }
@@ -241,6 +276,9 @@
             </button>` : ""}
             ${isClaudeCommand ? `<button class="action-btn logs-btn" data-id="${escapeAttr(t.terminalId)}" title="View logs">
               <i class="codicon codicon-output"></i>
+            </button>` : ""}
+            ${t.editedFiles && t.editedFiles.length > 0 ? `<button class="action-btn save-likeness-btn" data-id="${escapeAttr(t.terminalId)}" title="Save likeness">
+              <i class="codicon codicon-bookmark"></i>
             </button>` : ""}
           </div>
           <div class="card-top-right">
@@ -347,6 +385,17 @@
         logsTerminalId = el.dataset.id;
         activeEventFilters.clear();
         vscode.postMessage({ type: "requestLogs", terminalId: logsTerminalId });
+      });
+    });
+
+    terminalList.querySelectorAll(".save-likeness-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const el = /** @type {HTMLElement} */ (e.currentTarget);
+        if (el.classList.contains("saving")) { return; }
+        el.classList.add("saving");
+        const icon = el.querySelector("i");
+        if (icon) { icon.className = "codicon codicon-loading codicon-modifier-spin"; }
+        vscode.postMessage({ type: "saveLikeness", terminalId: el.dataset.id });
       });
     });
 

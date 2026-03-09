@@ -2,12 +2,14 @@ import * as vscode from "vscode";
 import { TerminalManager } from "../terminals/terminalManager";
 import { ClaudeMonitor } from "../hooks/claudeMonitor";
 import { DashboardPanel } from "../webview/dashboardPanel";
+import { writeHookConfig } from "../hooks/hookConfigWriter";
 import { launchNewTerminal, launchOneTerminal, launchPlanTerminal, launchWorktreeTerminal } from "../terminals/terminalGroup";
 
 export function registerCommands(
   context: vscode.ExtensionContext,
   terminalManager: TerminalManager,
-  claudeMonitor?: ClaudeMonitor
+  claudeMonitor?: ClaudeMonitor,
+  getHookPort?: () => number | undefined
 ): vscode.Disposable[] {
   return [
     vscode.commands.registerCommand("brainSpawn.launch", () => {
@@ -39,6 +41,15 @@ export function registerCommands(
       } else {
         vscode.window.showInformationMessage("No untracked terminals to close.");
       }
+    }),
+    vscode.commands.registerCommand("brainSpawn.reinstallHooks", async () => {
+      const port = getHookPort?.();
+      if (!port) {
+        vscode.window.showWarningMessage("Brain Spawn: No hook server is running. Try reloading the window.");
+        return;
+      }
+      await writeHookConfig(port);
+      vscode.window.showInformationMessage("Brain Spawn: Hook config reinstalled.");
     }),
   ];
 }

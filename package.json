@@ -44,6 +44,10 @@
       {
         "command": "brainSpawn.closeUntracked",
         "title": "Brain Spawn: Close Untracked Terminals"
+      },
+      {
+        "command": "brainSpawn.reinstallHooks",
+        "title": "Brain Spawn: Reinstall Claude Hooks"
       }
     ],
     "keybindings": [
