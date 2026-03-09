@@ -95,7 +95,7 @@ export async function launchNewTerminal(terminalManager: TerminalManager): Promi
   }
 
   const cwd = await pickWorkspaceCwd();
-  const count = Math.min(4, capacity);
+  const count = Math.min(3, capacity);
   const command = getCommand();
   const names = pickUnique(BRAIN_SPAWN_NAMES, count);
 

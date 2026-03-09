@@ -102,8 +102,8 @@ export async function activate(
     ...registerCommands(context, terminalManager, claudeMonitor, () => activeHookPort)
   );
 
-  // Auto-open dashboard only if we own the hook server (avoid duplicate dashboards)
-  if (config.get<boolean>("openDashboardOnStart") && ownsHookServer) {
+  // Auto-open dashboard (independent of autoStart/hook server)
+  if (config.get<boolean>("openDashboardOnStart")) {
     DashboardPanel.createOrShow(context, claudeMonitor, terminalManager);
   }
 

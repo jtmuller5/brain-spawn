@@ -94,7 +94,7 @@
         },
         "brainSpawn.openDashboardOnStart": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Automatically open the dashboard when VS Code starts"
         }
       }

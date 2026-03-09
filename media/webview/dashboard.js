@@ -62,6 +62,9 @@
       case "usageResult":
         updateUsageBar(msg.content, msg.error);
         break;
+      case "tabTrackingState":
+        updateTabTrackingButton(msg.enabled);
+        break;
       case "eventLogs":
         logsTerminalId = msg.terminalId;
         logsTerminalName = msg.terminalName || "Unknown";
@@ -105,6 +108,16 @@
       badges.push(`<span class="summary-badge idle" title="${idle} idle">${idle}</span>`);
     }
     statusSummary.innerHTML = badges.join("");
+  }
+
+  function updateTabTrackingButton(enabled) {
+    const btn = document.getElementById("tabTrackingBtn");
+    if (btn) {
+      btn.classList.toggle("toggled", enabled);
+      btn.title = enabled
+        ? "Tab tracking ON: files are linked to terminals"
+        : "Tab tracking: associate open files with terminals";
+    }
   }
 
   function updateActiveCard() {
@@ -847,6 +860,12 @@
   });
   document.getElementById("newPlainTerminalBtn").addEventListener("click", () => {
     vscode.postMessage({ type: "newPlainTerminal" });
+  });
+  document.getElementById("focusModeBtn").addEventListener("click", () => {
+    vscode.postMessage({ type: "focusMode" });
+  });
+  document.getElementById("tabTrackingBtn").addEventListener("click", () => {
+    vscode.postMessage({ type: "toggleTabTracking" });
   });
   document.getElementById("usageBtn").addEventListener("click", () => {
     vscode.postMessage({ type: "fetchUsage" });

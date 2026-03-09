@@ -13,6 +13,10 @@ export class DashboardPanel {
   private readonly terminalManager: TerminalManager;
   private disposables: vscode.Disposable[] = [];
   private externalTerminals = new Map<string, vscode.Terminal>();
+  private tabTracking = false;
+  private terminalTabs = new Map<string, Set<string>>();
+  private currentTrackedTerminalId: string | null = null;
+  private switchingTabs = false;
 
   static createOrShow(
     context: vscode.ExtensionContext,
@@ -43,6 +47,8 @@ export class DashboardPanel {
       monitor,
       terminalManager
     );
+
+    vscode.commands.executeCommand("workbench.action.pinEditor");
   }
 
   private constructor(
@@ -77,6 +83,54 @@ export class DashboardPanel {
       this.adoptExternalTerminal(terminalId)
     );
     this.disposables.push(externalSub);
+
+    // Track file opens and associate them with the active terminal
+    const editorSub = vscode.window.onDidChangeActiveTextEditor((editor) => {
+      if (!this.tabTracking || !editor || !this.currentTrackedTerminalId) {
+        return;
+      }
+      // Only track actual files, not output channels, settings, etc.
+      if (editor.document.uri.scheme !== "file") {
+        return;
+      }
+      const uri = editor.document.uri.toString();
+      let files = this.terminalTabs.get(this.currentTrackedTerminalId);
+      if (!files) {
+        files = new Set();
+        this.terminalTabs.set(this.currentTrackedTerminalId, files);
+      }
+      files.add(uri);
+    });
+    this.disposables.push(editorSub);
+
+    // Remove files from tracking when their tabs are closed
+    const tabCloseSub = vscode.window.tabGroups.onDidChangeTabs((event) => {
+      if (!this.tabTracking || this.switchingTabs) {
+        return;
+      }
+      for (const tab of event.closed) {
+        const tabUri = (tab.input as { uri?: vscode.Uri })?.uri;
+        if (tabUri && tabUri.scheme === "file") {
+          const uriStr = tabUri.toString();
+          for (const files of this.terminalTabs.values()) {
+            files.delete(uriStr);
+          }
+        }
+      }
+    });
+    this.disposables.push(tabCloseSub);
+
+    // Update the tracked terminal when the active terminal changes
+    const activeTermSub = vscode.window.onDidChangeActiveTerminal((t) => {
+      if (!this.tabTracking || !t) {
+        return;
+      }
+      const env = (t.creationOptions as vscode.TerminalOptions).env;
+      if (env?.["BRAIN_SPAWN_TERMINAL_ID"]) {
+        this.currentTrackedTerminalId = env["BRAIN_SPAWN_TERMINAL_ID"];
+      }
+    });
+    this.disposables.push(activeTermSub);
 
     const closeSub = vscode.window.onDidCloseTerminal((closed) => {
       for (const [id, terminal] of this.externalTerminals) {
@@ -193,6 +247,28 @@ export class DashboardPanel {
           launchOneTerminalWithCommand(this.terminalManager, msg.command);
         }
         break;
+      case "focusMode":
+        vscode.commands.executeCommand("workbench.action.closeOtherEditors");
+        vscode.commands.executeCommand("workbench.action.closePanel");
+        vscode.commands.executeCommand("workbench.action.closeSidebar");
+        break;
+      case "toggleTabTracking":
+        this.tabTracking = !this.tabTracking;
+        if (this.tabTracking) {
+          // Seed current terminal from the active VS Code terminal
+          const active = vscode.window.activeTerminal;
+          if (active) {
+            const env = (active.creationOptions as vscode.TerminalOptions).env;
+            if (env?.["BRAIN_SPAWN_TERMINAL_ID"]) {
+              this.currentTrackedTerminalId = env["BRAIN_SPAWN_TERMINAL_ID"];
+            }
+          }
+        }
+        this.panel.webview.postMessage({
+          type: "tabTrackingState",
+          enabled: this.tabTracking,
+        });
+        break;
       case "newPlainTerminal": {
         if (this.terminalManager.getRemainingCapacity() === 0) {
           vscode.window.showWarningMessage("Terminal limit reached (max 10). Close some terminals first.");
@@ -255,11 +331,67 @@ export class DashboardPanel {
     }
   }
 
-  private focusTerminal(terminalId: string): void {
+  private async focusTerminal(terminalId: string): Promise<void> {
     const terminal = this.findTerminal(terminalId);
     if (terminal) {
       terminal.show();
     }
+
+    if (this.tabTracking) {
+      this.currentTrackedTerminalId = terminalId;
+      await this.switchToTerminalTabs(terminalId);
+    }
+  }
+
+  private async switchToTerminalTabs(terminalId: string): Promise<void> {
+    this.switchingTabs = true;
+    try {
+      await this.doSwitchToTerminalTabs(terminalId);
+    } finally {
+      this.switchingTabs = false;
+    }
+  }
+
+  private async doSwitchToTerminalTabs(terminalId: string): Promise<void> {
+    const targetFiles = this.terminalTabs.get(terminalId);
+
+    // Close editors not associated with this terminal (keep the dashboard)
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        if (tab.isPinned) {
+          continue;
+        }
+        const tabUri = (tab.input as { uri?: vscode.Uri })?.uri;
+        // Only manage file:// tabs — leave output channels, settings, etc. alone
+        if (!tabUri || tabUri.scheme !== "file") {
+          continue;
+        }
+        const tabUriStr = tabUri.toString();
+        if (!targetFiles || !targetFiles.has(tabUriStr)) {
+          await vscode.window.tabGroups.close(tab);
+        }
+      }
+    }
+
+    // Open files associated with this terminal
+    if (targetFiles) {
+      for (const uriStr of targetFiles) {
+        const uri = vscode.Uri.parse(uriStr);
+        const alreadyOpen = vscode.window.tabGroups.all.some((g) =>
+          g.tabs.some((t) => (t.input as { uri?: vscode.Uri })?.uri?.toString() === uriStr)
+        );
+        if (!alreadyOpen) {
+          try {
+            await vscode.window.showTextDocument(uri, { preview: false, preserveFocus: true });
+          } catch {
+            targetFiles.delete(uriStr);
+          }
+        }
+      }
+    }
+
+    // Re-focus the dashboard
+    this.panel.reveal(undefined, true);
   }
 
   private async exportConversation(terminalId: string): Promise<void> {
@@ -682,6 +814,12 @@ Respond with ONLY the JSON object, no markdown fences or extra text.`;
         </button>
         <button class="header-btn icon-only" id="newPlainTerminalBtn" title="New terminal">
           <i class="codicon codicon-terminal"></i>
+        </button>
+        <button class="header-btn icon-only" id="focusModeBtn" title="Focus mode: close other tabs and panels">
+          <i class="codicon codicon-screen-full"></i>
+        </button>
+        <button class="header-btn icon-only" id="tabTrackingBtn" title="Tab tracking: associate open files with terminals">
+          <i class="codicon codicon-link"></i>
         </button>
       </div>
     </div>

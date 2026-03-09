@@ -162,6 +162,11 @@ body {
   background: var(--vscode-button-secondaryHoverBackground);
 }
 
+.header-btn.toggled {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
 .empty-state {
   text-align: center;
   padding: 48px 16px;
