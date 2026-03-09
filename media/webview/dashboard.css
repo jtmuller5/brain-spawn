@@ -167,6 +167,20 @@ body {
   color: var(--vscode-button-foreground);
 }
 
+.file-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #1a7fd4;
+  color: #fff;
+  font-size: 7px;
+  font-weight: 600;
+  line-height: 1;
+}
+
 .empty-state {
   text-align: center;
   padding: 48px 16px;

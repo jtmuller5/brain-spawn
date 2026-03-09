@@ -99,7 +99,11 @@ export class DashboardPanel {
         files = new Set();
         this.terminalTabs.set(this.currentTrackedTerminalId, files);
       }
+      if (files.has(uri)) {
+        return; // Already tracked
+      }
       files.add(uri);
+      this.sendState();
     });
     this.disposables.push(editorSub);
 
@@ -108,14 +112,20 @@ export class DashboardPanel {
       if (!this.tabTracking || this.switchingTabs) {
         return;
       }
+      let changed = false;
       for (const tab of event.closed) {
         const tabUri = (tab.input as { uri?: vscode.Uri })?.uri;
         if (tabUri && tabUri.scheme === "file") {
           const uriStr = tabUri.toString();
           for (const files of this.terminalTabs.values()) {
-            files.delete(uriStr);
+            if (files.delete(uriStr)) {
+              changed = true;
+            }
           }
         }
+      }
+      if (changed) {
+        this.sendState();
       }
     });
     this.disposables.push(tabCloseSub);
@@ -154,11 +164,17 @@ export class DashboardPanel {
   }
 
   private sendState(): void {
+    const fileCounts: Record<string, number> = {};
+    for (const [id, files] of this.terminalTabs) {
+      fileCounts[id] = files.size;
+    }
     this.panel.webview.postMessage({
       type: "state",
       terminals: this.monitor.getStates(),
       isClaudeCommand: this.isClaudeCommand(),
       commands: getCommands(),
+      fileCounts,
+      tabTracking: this.tabTracking,
     });
     this.sendActiveTerminalId(vscode.window.activeTerminal);
   }
@@ -251,6 +267,7 @@ export class DashboardPanel {
         vscode.commands.executeCommand("workbench.action.closeOtherEditors");
         vscode.commands.executeCommand("workbench.action.closePanel");
         vscode.commands.executeCommand("workbench.action.closeSidebar");
+        vscode.commands.executeCommand("brainSpawn.closeUntracked");
         break;
       case "toggleTabTracking":
         this.tabTracking = !this.tabTracking;
@@ -816,7 +833,7 @@ Respond with ONLY the JSON object, no markdown fences or extra text.`;
           <i class="codicon codicon-terminal"></i>
         </button>
         <button class="header-btn icon-only" id="focusModeBtn" title="Focus mode: close other tabs and panels">
-          <i class="codicon codicon-screen-full"></i>
+          <i class="codicon codicon-target"></i>
         </button>
         <button class="header-btn icon-only" id="tabTrackingBtn" title="Tab tracking: associate open files with terminals">
           <i class="codicon codicon-link"></i>

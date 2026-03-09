@@ -33,6 +33,10 @@
   let commands = [];
   /** @type {string[]} Previous terminal IDs for detecting structural changes */
   let prevTerminalIds = [];
+  /** @type {Record<string, number>} */
+  let fileCounts = {};
+  /** @type {boolean} */
+  let tabTrackingEnabled = false;
 
   window.addEventListener("message", (event) => {
     const msg = event.data;
@@ -41,6 +45,11 @@
         terminals = msg.terminals || [];
         isClaudeCommand = msg.isClaudeCommand !== false;
         commands = msg.commands || [];
+        fileCounts = msg.fileCounts || {};
+        if (msg.tabTracking !== undefined) {
+          tabTrackingEnabled = msg.tabTracking;
+          updateTabTrackingButton(tabTrackingEnabled);
+        }
         if (currentView === "dashboard") {
           // Don't re-render while user is editing a name or description
           if (!terminalList.querySelector(".name-input, .description-input")) {
@@ -154,6 +163,27 @@
       // Update status class on card
       const statusClass = t.status === "waiting" ? "waiting" : t.status === "busy" ? "busy" : "idle";
       card.className = card.className.replace(/\bstatus-\w+/g, "") + ` status-${statusClass}`;
+
+      // Update file count badge
+      const topRight = card.querySelector(".card-top-right");
+      if (topRight) {
+        const existingBadge = topRight.querySelector(".file-count-badge");
+        const count = fileCounts[t.terminalId] || 0;
+        if (tabTrackingEnabled && count > 0) {
+          if (existingBadge) {
+            existingBadge.textContent = String(count);
+            existingBadge.title = `${count} linked files`;
+          } else {
+            const badge = document.createElement("span");
+            badge.className = "file-count-badge";
+            badge.textContent = String(count);
+            badge.title = `${count} linked files`;
+            topRight.prepend(badge);
+          }
+        } else if (existingBadge) {
+          existingBadge.remove();
+        }
+      }
 
       // Update status dot
       const dot = card.querySelector(".status-dot");
@@ -295,6 +325,7 @@
             </button>` : ""}
           </div>
           <div class="card-top-right">
+            ${tabTrackingEnabled && (fileCounts[t.terminalId] || 0) > 0 ? `<span class="file-count-badge" title="${fileCounts[t.terminalId]} linked files">${fileCounts[t.terminalId]}</span>` : ""}
             <div class="status-dot ${statusClass}" title="${statusLabel}"></div>
           </div>
           <div class="card-header">
