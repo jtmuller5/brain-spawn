@@ -106,16 +106,16 @@ export async function launchNewTerminal(terminalManager: TerminalManager): Promi
       color: pick(RANDOM_COLORS),
       command,
     };
-    const terminal = createTerminal(def, cwd);
+    const { terminal } = createTerminal(def, cwd);
     terminalManager.track(GROUP_NAME, terminal);
     terminal.sendText(command);
   }
 }
 
-export async function launchOneTerminal(terminalManager: TerminalManager): Promise<void> {
+export async function launchOneTerminal(terminalManager: TerminalManager): Promise<string | undefined> {
   if (terminalManager.getRemainingCapacity() === 0) {
     vscode.window.showWarningMessage("Terminal limit reached (max 10). Close some terminals first.");
-    return;
+    return undefined;
   }
 
   const cwd = await pickWorkspaceCwd();
@@ -126,19 +126,20 @@ export async function launchOneTerminal(terminalManager: TerminalManager): Promi
     color: pick(RANDOM_COLORS),
     command,
   };
-  const terminal = createTerminal(def, cwd);
+  const { terminal, terminalId } = createTerminal(def, cwd);
   terminalManager.track(GROUP_NAME, terminal);
   terminal.sendText(command);
   terminal.show();
+  return terminalId;
 }
 
 export async function launchOneTerminalWithCommand(
   terminalManager: TerminalManager,
   command: string
-): Promise<void> {
+): Promise<string | undefined> {
   if (terminalManager.getRemainingCapacity() === 0) {
     vscode.window.showWarningMessage("Terminal limit reached (max 10). Close some terminals first.");
-    return;
+    return undefined;
   }
 
   const cwd = await pickWorkspaceCwd();
@@ -148,10 +149,11 @@ export async function launchOneTerminalWithCommand(
     color: pick(RANDOM_COLORS),
     command,
   };
-  const terminal = createTerminal(def, cwd);
+  const { terminal, terminalId } = createTerminal(def, cwd);
   terminalManager.track(GROUP_NAME, terminal);
   terminal.sendText(command);
   terminal.show();
+  return terminalId;
 }
 
 export async function launchPlanTerminal(terminalManager: TerminalManager): Promise<void> {
@@ -168,7 +170,7 @@ export async function launchPlanTerminal(terminalManager: TerminalManager): Prom
     color: pick(RANDOM_COLORS),
     command,
   };
-  const terminal = createTerminal(def, cwd);
+  const { terminal } = createTerminal(def, cwd);
   terminalManager.track(GROUP_NAME, terminal);
   terminal.sendText(`${command} --permission-mode plan`);
   terminal.show();
@@ -188,7 +190,7 @@ export async function launchWorktreeTerminal(terminalManager: TerminalManager): 
     color: pick(RANDOM_COLORS),
     command,
   };
-  const terminal = createTerminal(def, cwd);
+  const { terminal } = createTerminal(def, cwd);
   terminalManager.track(GROUP_NAME, terminal);
   terminal.sendText(`${command} --worktree`);
   terminal.show();
@@ -212,13 +214,13 @@ export async function forkTerminal(
     color: pick(RANDOM_COLORS),
     command,
   };
-  const terminal = createTerminal(def, cwd);
+  const { terminal } = createTerminal(def, cwd);
   terminalManager.track(GROUP_NAME, terminal);
   terminal.sendText(`${command} --resume ${sessionId} --fork-session`);
   terminal.show();
 }
 
-function createTerminal(def: TerminalDefinition, cwd?: string): vscode.Terminal {
+function createTerminal(def: TerminalDefinition, cwd?: string): { terminal: vscode.Terminal; terminalId: string } {
   const terminalId = crypto.randomUUID();
 
   const options: vscode.TerminalOptions = {
@@ -246,5 +248,5 @@ function createTerminal(def: TerminalDefinition, cwd?: string): vscode.Terminal 
     claudeMonitor.registerTerminal(terminalId, def.name, GROUP_NAME, def.icon, def.color, cwd);
   }
 
-  return vscode.window.createTerminal(options);
+  return { terminal: vscode.window.createTerminal(options), terminalId };
 }

@@ -12,8 +12,8 @@
   /** @type {number | null} */
   let statusTimer = null;
 
-  // Logs view state
-  /** @type {'dashboard' | 'logs'} */
+  // View state
+  /** @type {'dashboard' | 'logs' | 'fileSets'} */
   let currentView = "dashboard";
   /** @type {string | null} */
   let logsTerminalId = null;
@@ -37,6 +37,8 @@
   let fileCounts = {};
   /** @type {boolean} */
   let tabTrackingEnabled = false;
+  /** @type {Array<{id: string, name: string, description: string, files: string[], createdAt: string, updatedAt: string}>} */
+  let fileSetsData = [];
 
   window.addEventListener("message", (event) => {
     const msg = event.data;
@@ -81,20 +83,27 @@
         logsEditedFiles = msg.editedFiles || [];
         renderLogsView();
         break;
-      case "saveLikenessResult": {
-        const saveBtn = terminalList.querySelector(`.save-likeness-btn[data-id="${CSS.escape(msg.terminalId)}"]`);
-        if (saveBtn) {
-          const icon = saveBtn.querySelector("i");
-          if (msg.error) {
+      case "saveFileSetResult": {
+        const saveFileSetBtn = terminalList.querySelector(`.save-file-set-btn[data-id="${CSS.escape(msg.terminalId)}"]`);
+        if (saveFileSetBtn) {
+          const icon = saveFileSetBtn.querySelector("i");
+          if (msg.error && msg.error !== "Cancelled.") {
             if (icon) { icon.className = "codicon codicon-error"; }
-            setTimeout(() => { if (icon) { icon.className = "codicon codicon-bookmark"; } saveBtn.classList.remove("saving"); }, 2000);
-          } else {
+            setTimeout(() => { if (icon) { icon.className = "codicon codicon-save"; } saveFileSetBtn.classList.remove("saving"); }, 2000);
+          } else if (!msg.error) {
             if (icon) { icon.className = "codicon codicon-check"; }
-            setTimeout(() => { if (icon) { icon.className = "codicon codicon-bookmark"; } saveBtn.classList.remove("saving"); }, 2000);
+            setTimeout(() => { if (icon) { icon.className = "codicon codicon-save"; } saveFileSetBtn.classList.remove("saving"); }, 2000);
+          } else {
+            if (icon) { icon.className = "codicon codicon-save"; }
+            saveFileSetBtn.classList.remove("saving");
           }
         }
         break;
       }
+      case "fileSets":
+        fileSetsData = msg.sets || [];
+        renderFileSetsView();
+        break;
     }
   });
 
@@ -253,9 +262,10 @@
         return;
       }
 
-      // Show save-likeness button if files were edited
-      const hasSaveBtn = !!card.querySelector(".save-likeness-btn");
-      if (t.editedFiles && t.editedFiles.length > 0 && !hasSaveBtn) {
+      // Show/hide save-file-set button based on tab tracking and file count
+      const hasSaveFileSetBtn = !!card.querySelector(".save-file-set-btn");
+      const shouldShowFileSetBtn = tabTrackingEnabled && (fileCounts[t.terminalId] || 0) > 0;
+      if (shouldShowFileSetBtn !== hasSaveFileSetBtn) {
         render();
         return;
       }
@@ -308,9 +318,11 @@
             <button class="action-btn close-btn" data-id="${escapeAttr(t.terminalId)}" title="Close terminal">
               <i class="codicon codicon-close"></i>
             </button>
+            ${"" /* /clear button hidden to save space
             ${isClaudeCommand ? `<button class="action-btn clear-btn send-text-btn" data-id="${escapeAttr(t.terminalId)}" data-text="/clear" title="/clear">
               <i class="codicon codicon-clear-all"></i>
             </button>` : ""}
+            */}
             ${isClaudeCommand && t.sessionId ? `<button class="action-btn fork-btn" data-id="${escapeAttr(t.terminalId)}" title="Fork session">
               <i class="codicon codicon-repo-forked"></i>
             </button>
@@ -320,8 +332,11 @@
             ${isClaudeCommand ? `<button class="action-btn logs-btn" data-id="${escapeAttr(t.terminalId)}" title="View logs">
               <i class="codicon codicon-output"></i>
             </button>` : ""}
-            ${t.editedFiles && t.editedFiles.length > 0 ? `<button class="action-btn save-likeness-btn" data-id="${escapeAttr(t.terminalId)}" title="Save likeness">
-              <i class="codicon codicon-bookmark"></i>
+            ${tabTrackingEnabled && (fileCounts[t.terminalId] || 0) > 0 ? `<button class="action-btn save-file-set-btn" data-id="${escapeAttr(t.terminalId)}" title="Save file set">
+              <i class="codicon codicon-save"></i>
+            </button>
+            <button class="action-btn paste-files-btn" data-id="${escapeAttr(t.terminalId)}" title="Paste file paths into terminal">
+              <i class="codicon codicon-insert"></i>
             </button>` : ""}
           </div>
           <div class="card-top-right">
@@ -432,14 +447,21 @@
       });
     });
 
-    terminalList.querySelectorAll(".save-likeness-btn").forEach((btn) => {
+    terminalList.querySelectorAll(".save-file-set-btn").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         const el = /** @type {HTMLElement} */ (e.currentTarget);
         if (el.classList.contains("saving")) { return; }
         el.classList.add("saving");
         const icon = el.querySelector("i");
         if (icon) { icon.className = "codicon codicon-loading codicon-modifier-spin"; }
-        vscode.postMessage({ type: "saveLikeness", terminalId: el.dataset.id });
+        vscode.postMessage({ type: "saveFileSet", terminalId: el.dataset.id });
+      });
+    });
+
+    terminalList.querySelectorAll(".paste-files-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const el = /** @type {HTMLElement} */ (e.currentTarget);
+        vscode.postMessage({ type: "pasteFiles", terminalId: el.dataset.id });
       });
     });
 
@@ -862,6 +884,91 @@
     });
   }
 
+  function renderFileSetsView() {
+    if (statusTimer) {
+      clearInterval(statusTimer);
+      statusTimer = null;
+    }
+
+    emptyState.style.display = "none";
+    terminalList.style.display = "";
+
+    const setsHtml = fileSetsData.length === 0
+      ? `<div class="file-sets-empty"><p>No file sets saved yet.</p><p class="hint">Save linked files from a terminal card to create a file set.</p></div>`
+      : `<div class="file-sets-list">${fileSetsData.map((s) => {
+          const createdDate = new Date(s.createdAt).toLocaleDateString([], { month: "short", day: "numeric" });
+          return `<div class="file-set-card" data-id="${escapeAttr(s.id)}">
+            <div class="file-set-header">
+              <div class="file-set-info">
+                <span class="file-set-name">${escapeHtml(s.name)}</span>
+                <span class="file-set-meta">${s.files.length} file${s.files.length !== 1 ? "s" : ""} &middot; ${createdDate}</span>
+              </div>
+              <div class="file-set-actions">
+                <button class="action-btn file-set-edit-btn" data-id="${escapeAttr(s.id)}" title="Edit file set">
+                  <i class="codicon codicon-edit"></i>
+                </button>
+                <button class="action-btn file-set-delete-btn" data-id="${escapeAttr(s.id)}" title="Delete file set">
+                  <i class="codicon codicon-trash"></i>
+                </button>
+              </div>
+            </div>
+            ${s.description ? `<div class="file-set-description">${escapeHtml(s.description)}</div>` : ""}
+            <div class="file-set-files">${s.files.map((f) =>
+              `<button class="file-item" data-path="${escapeAttr(f)}" title="${escapeAttr(f)}">
+                <i class="codicon codicon-file"></i>
+                <span class="file-name">${escapeHtml(fileName(f))}</span>
+              </button>`
+            ).join("")}</div>
+          </div>`;
+        }).join("")}</div>`;
+
+    terminalList.innerHTML = `<div class="file-sets-view">
+      <div class="logs-header">
+        <button class="logs-back-btn" id="fileSetsBackBtn"><i class="codicon codicon-arrow-left"></i> Back</button>
+        <h2 class="logs-title">File Sets</h2>
+        <span class="logs-count">${fileSetsData.length} set${fileSetsData.length !== 1 ? "s" : ""}</span>
+        <button class="header-btn" id="newFileSetBtn" style="margin-left:auto"><i class="codicon codicon-add"></i> New</button>
+      </div>
+      ${setsHtml}
+    </div>`;
+
+    // New file set button
+    document.getElementById("newFileSetBtn").addEventListener("click", () => {
+      vscode.postMessage({ type: "createFileSet" });
+    });
+
+    // Back button
+    document.getElementById("fileSetsBackBtn").addEventListener("click", () => {
+      currentView = "dashboard";
+      fileSetsData = [];
+      render();
+    });
+
+    // File click handlers
+    terminalList.querySelectorAll(".file-item").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const filePath = /** @type {HTMLElement} */ (btn).dataset.path;
+        vscode.postMessage({ type: "openFile", filePath });
+      });
+    });
+
+    // Edit buttons
+    terminalList.querySelectorAll(".file-set-edit-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = /** @type {HTMLElement} */ (btn).dataset.id;
+        vscode.postMessage({ type: "editFileSet", fileSetId: id });
+      });
+    });
+
+    // Delete buttons
+    terminalList.querySelectorAll(".file-set-delete-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = /** @type {HTMLElement} */ (btn).dataset.id;
+        vscode.postMessage({ type: "deleteFileSet", fileSetId: id });
+      });
+    });
+  }
+
   /**
    * Format timestamp as HH:MM:SS.mmm
    * @param {number} ts
@@ -897,6 +1004,10 @@
   });
   document.getElementById("tabTrackingBtn").addEventListener("click", () => {
     vscode.postMessage({ type: "toggleTabTracking" });
+  });
+  document.getElementById("fileSetsBtn").addEventListener("click", () => {
+    currentView = "fileSets";
+    vscode.postMessage({ type: "requestFileSets" });
   });
   document.getElementById("usageBtn").addEventListener("click", () => {
     vscode.postMessage({ type: "fetchUsage" });

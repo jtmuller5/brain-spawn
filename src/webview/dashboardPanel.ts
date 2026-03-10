@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
 import * as cp from "child_process";
 import * as path from "path";
-import * as fs from "fs";
 import { ClaudeMonitor } from "../hooks/claudeMonitor";
 import { TerminalManager } from "../terminals/terminalManager";
-import { forkTerminal, getCommands, launchOneTerminalWithCommand } from "../terminals/terminalGroup";
+import { forkTerminal, getCommands, launchOneTerminal, launchOneTerminalWithCommand } from "../terminals/terminalGroup";
+import { loadFileSets, addFileSet, updateFileSet, deleteFileSet } from "../fileSets";
 
 export class DashboardPanel {
   private static currentPanel: DashboardPanel | undefined;
@@ -83,6 +83,11 @@ export class DashboardPanel {
       this.adoptExternalTerminal(terminalId)
     );
     this.disposables.push(externalSub);
+
+    const fileEditedSub = this.monitor.onFileEdited((terminalId, filePath) =>
+      this.handleAutoLinkedFile(terminalId, filePath)
+    );
+    this.disposables.push(fileEditedSub);
 
     // Track file opens and associate them with the active terminal
     const editorSub = vscode.window.onDidChangeActiveTextEditor((editor) => {
@@ -212,6 +217,7 @@ export class DashboardPanel {
     filePath?: string;
     command?: string;
     orderedIds?: string[];
+    fileSetId?: string;
   }): void {
     switch (msg.type) {
       case "ready":
@@ -250,7 +256,7 @@ export class DashboardPanel {
         vscode.commands.executeCommand("brainSpawn.launch");
         break;
       case "newTerminal":
-        vscode.commands.executeCommand("brainSpawn.newTerminal");
+        this.newTerminalWithFileSet(() => launchOneTerminal(this.terminalManager));
         break;
       case "newPlanTerminal":
         vscode.commands.executeCommand("brainSpawn.newPlanTerminal");
@@ -260,7 +266,7 @@ export class DashboardPanel {
         break;
       case "newTerminalWithCommand":
         if (msg.command) {
-          launchOneTerminalWithCommand(this.terminalManager, msg.command);
+          this.newTerminalWithFileSet(() => launchOneTerminalWithCommand(this.terminalManager, msg.command!));
         }
         break;
       case "focusMode":
@@ -340,9 +346,30 @@ export class DashboardPanel {
           vscode.window.showTextDocument(uri, { preview: true });
         }
         break;
-      case "saveLikeness":
+      case "saveFileSet":
         if (msg.terminalId) {
-          this.saveLikeness(msg.terminalId);
+          this.saveFileSet(msg.terminalId);
+        }
+        break;
+      case "requestFileSets":
+        this.sendFileSets();
+        break;
+      case "editFileSet":
+        if (msg.fileSetId) {
+          this.editFileSet(msg.fileSetId);
+        }
+        break;
+      case "deleteFileSet":
+        if (msg.fileSetId) {
+          this.deleteFileSet(msg.fileSetId);
+        }
+        break;
+      case "createFileSet":
+        this.createFileSet();
+        break;
+      case "pasteFiles":
+        if (msg.terminalId) {
+          this.pasteFiles(msg.terminalId);
         }
         break;
     }
@@ -469,156 +496,242 @@ export class DashboardPanel {
     this.sendState();
   }
 
-  private async saveLikeness(terminalId: string): Promise<void> {
+  private async saveFileSet(terminalId: string): Promise<void> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) {
+      this.panel.webview.postMessage({ type: "saveFileSetResult", terminalId, error: "No workspace folder." });
+      return;
+    }
+
+    const uris = this.terminalTabs.get(terminalId);
+    if (!uris || uris.size === 0) {
+      this.panel.webview.postMessage({ type: "saveFileSetResult", terminalId, error: "No linked files." });
+      return;
+    }
+
+    // Convert URIs to workspace-relative paths
+    const files = [...uris].map((uriStr) => {
+      const fsPath = vscode.Uri.parse(uriStr).fsPath;
+      return path.relative(workspaceFolder, fsPath);
+    });
+
+    // Try to auto-generate name/description using claude -p
     const state = this.monitor
       .getStates()
       .find((s) => s.terminalId === terminalId);
-    if (!state || state.editedFiles.length === 0) {
-      this.panel.webview.postMessage({
-        type: "saveLikenessResult",
-        terminalId,
-        error: "No touched files to save.",
-      });
-      return;
-    }
+    let generatedName = "";
+    let generatedDescription = "";
 
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!workspaceFolder) {
-      vscode.window.showErrorMessage("No workspace folder open.");
-      this.panel.webview.postMessage({
-        type: "saveLikenessResult",
-        terminalId,
-        error: "No workspace folder.",
-      });
-      return;
-    }
+    if (state && this.isClaudeCommand()) {
+      const chatText = (state.chatHistory || [])
+        .map((m) => `${m.role}: ${m.text}`)
+        .join("\n");
+      const fileList = files.join("\n");
 
-    // Build context for Claude
-    const chatText = state.chatHistory
-      .map((m) => `${m.role}: ${m.text}`)
-      .join("\n");
-    const fileList = state.editedFiles.join("\n");
-
-    const prompt = `You are generating metadata for a coding session snapshot called a "likeness". Given the chat history and list of touched files below, produce a JSON object with exactly two fields:
-- "name": a short, descriptive kebab-case name for this work (e.g. "add-user-auth", "fix-sidebar-layout"). Max 50 chars.
-- "description": a one-sentence summary of what was accomplished. Max 200 chars.
+      const prompt = `Given the chat history and file list below, produce a JSON object with exactly two fields:
+- "name": a short, descriptive kebab-case name for this file collection (e.g. "auth-module", "sidebar-layout"). Max 50 chars.
+- "description": a one-sentence summary of what these files relate to. Max 200 chars.
 
 Chat history:
 ${chatText}
 
-Touched files:
+Files:
 ${fileList}
 
 Respond with ONLY the JSON object, no markdown fences or extra text.`;
 
-    try {
-      const result = await new Promise<string>((resolve, reject) => {
-        const proc = cp.spawn("claude", ["-p", prompt], {
-          cwd: workspaceFolder,
-          env: { ...process.env },
-          stdio: ["ignore", "pipe", "pipe"],
-        });
-
-        let stdout = "";
-        let stderr = "";
-        proc.stdout.on("data", (data: Buffer) => {
-          stdout += data.toString();
-        });
-        proc.stderr.on("data", (data: Buffer) => {
-          stderr += data.toString();
-        });
-        proc.on("close", (code) => {
-          if (code === 0) {
-            resolve(stdout.trim());
-          } else {
-            reject(new Error(stderr || `claude exited with code ${code}`));
-          }
-        });
-        proc.on("error", reject);
-      });
-
-      // Parse the JSON response
-      // Strip markdown fences if present
-      let jsonStr = result;
-      const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (fenceMatch) {
-        jsonStr = fenceMatch[1].trim();
-      }
-
-      let generated: { name: string; description?: string };
       try {
-        generated = JSON.parse(jsonStr);
-      } catch {
-        // Fallback: use terminal name
-        generated = {
-          name: state.terminalName.toLowerCase().replace(/\s+/g, "-"),
-          description: result.slice(0, 200),
-        };
-      }
-
-      // Let user confirm/edit the name
-      const name = await vscode.window.showInputBox({
-        prompt: "Likeness name",
-        value: generated.name,
-        validateInput: (v) =>
-          v.trim().length === 0 ? "Name is required" : undefined,
-      });
-
-      if (!name) {
-        // User cancelled
-        this.panel.webview.postMessage({
-          type: "saveLikenessResult",
-          terminalId,
-          error: "Cancelled.",
+        const result = await new Promise<string>((resolve, reject) => {
+          const proc = cp.spawn("claude", ["-p", prompt], {
+            cwd: workspaceFolder,
+            env: { ...process.env },
+            stdio: ["ignore", "pipe", "pipe"],
+          });
+          let stdout = "";
+          let stderr = "";
+          proc.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
+          proc.stderr.on("data", (data: Buffer) => { stderr += data.toString(); });
+          proc.on("close", (code) => {
+            if (code === 0) { resolve(stdout.trim()); }
+            else { reject(new Error(stderr || `claude exited with code ${code}`)); }
+          });
+          proc.on("error", reject);
         });
-        return;
+
+        let jsonStr = result;
+        const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (fenceMatch) { jsonStr = fenceMatch[1].trim(); }
+
+        try {
+          const parsed = JSON.parse(jsonStr);
+          generatedName = parsed.name || "";
+          generatedDescription = parsed.description || "";
+        } catch {
+          generatedName = (state.terminalName || "").toLowerCase().replace(/\s+/g, "-");
+        }
+      } catch {
+        // Claude not available — fall through to manual input
       }
-
-      // Let user confirm/edit the description
-      const description = await vscode.window.showInputBox({
-        prompt: "Likeness description (optional)",
-        value: generated.description || "",
-      });
-
-      // Build the likeness object
-      const likeness = {
-        name,
-        description: description || undefined,
-        files: state.editedFiles,
-        createdAt: new Date().toISOString(),
-      };
-
-      // Save to .brain-spawn/ folder
-      const brainSpawnDir = path.join(workspaceFolder, ".brain-spawn");
-      if (!fs.existsSync(brainSpawnDir)) {
-        fs.mkdirSync(brainSpawnDir, { recursive: true });
-      }
-
-      const slug = name
-        .toLowerCase()
-        .replace(/[^a-z0-9-]/g, "-")
-        .replace(/-+/g, "-")
-        .replace(/^-|-$/g, "");
-      const filePath = path.join(brainSpawnDir, `${slug}.json`);
-
-      fs.writeFileSync(filePath, JSON.stringify(likeness, null, 2) + "\n");
-
-      vscode.window.showInformationMessage(`Likeness saved: ${slug}.json`);
-      this.panel.webview.postMessage({
-        type: "saveLikenessResult",
-        terminalId,
-        error: null,
-      });
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Unknown error";
-      vscode.window.showErrorMessage(`Failed to save likeness: ${message}`);
-      this.panel.webview.postMessage({
-        type: "saveLikenessResult",
-        terminalId,
-        error: message,
-      });
     }
+
+    const name = await vscode.window.showInputBox({
+      prompt: "File set name",
+      value: generatedName,
+      validateInput: (v) => v.trim().length === 0 ? "Name is required" : undefined,
+    });
+    if (!name) {
+      this.panel.webview.postMessage({ type: "saveFileSetResult", terminalId, error: "Cancelled." });
+      return;
+    }
+
+    const description = await vscode.window.showInputBox({
+      prompt: "File set description (optional)",
+      value: generatedDescription,
+    });
+
+    addFileSet(workspaceFolder, name, description || "", files);
+    this.panel.webview.postMessage({ type: "saveFileSetResult", terminalId, error: null });
+  }
+
+  private async createFileSet(): Promise<void> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) {
+      vscode.window.showErrorMessage("No workspace folder open.");
+      return;
+    }
+
+    const name = await vscode.window.showInputBox({
+      prompt: "File set name",
+      validateInput: (v) => v.trim().length === 0 ? "Name is required" : undefined,
+    });
+    if (!name) { return; }
+
+    const description = await vscode.window.showInputBox({
+      prompt: "File set description (optional)",
+    });
+    if (description === undefined) { return; }
+
+    const uris = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectMany: true,
+      defaultUri: vscode.Uri.file(workspaceFolder),
+      openLabel: "Add to file set",
+    });
+    if (!uris || uris.length === 0) { return; }
+
+    const files = uris.map((u) => path.relative(workspaceFolder, u.fsPath));
+    addFileSet(workspaceFolder, name, description || "", files);
+    this.sendFileSets();
+  }
+
+  private async pasteFiles(terminalId: string): Promise<void> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) { return; }
+
+    const uris = this.terminalTabs.get(terminalId);
+    if (!uris || uris.size === 0) { return; }
+
+    const relativePaths = [...uris].map((uriStr) => {
+      const fsPath = vscode.Uri.parse(uriStr).fsPath;
+      return `'${path.relative(workspaceFolder, fsPath)}'`;
+    });
+
+    const terminal = this.findTerminal(terminalId);
+    if (!terminal) { return; }
+
+    terminal.show(false);
+    await vscode.commands.executeCommand(
+      "workbench.action.terminal.sendSequence",
+      { text: relativePaths.join(" ") }
+    );
+  }
+
+  private sendFileSets(): void {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) {
+      this.panel.webview.postMessage({ type: "fileSets", sets: [] });
+      return;
+    }
+    const sets = loadFileSets(workspaceFolder);
+    this.panel.webview.postMessage({ type: "fileSets", sets });
+  }
+
+  private async editFileSet(fileSetId: string): Promise<void> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) { return; }
+
+    const sets = loadFileSets(workspaceFolder);
+    const set = sets.find((s) => s.id === fileSetId);
+    if (!set) { return; }
+
+    const name = await vscode.window.showInputBox({
+      prompt: "File set name",
+      value: set.name,
+      validateInput: (v) => v.trim().length === 0 ? "Name is required" : undefined,
+    });
+    if (!name) { return; }
+
+    const description = await vscode.window.showInputBox({
+      prompt: "File set description (optional)",
+      value: set.description,
+    });
+    if (description === undefined) { return; }
+
+    updateFileSet(workspaceFolder, fileSetId, { name, description });
+    this.sendFileSets();
+  }
+
+  private async deleteFileSet(fileSetId: string): Promise<void> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceFolder) { return; }
+
+    const confirm = await vscode.window.showWarningMessage(
+      "Delete this file set?",
+      { modal: true },
+      "Delete"
+    );
+    if (confirm !== "Delete") { return; }
+
+    deleteFileSet(workspaceFolder, fileSetId);
+    this.sendFileSets();
+  }
+
+  private async newTerminalWithFileSet(
+    createFn: () => Promise<string | undefined>
+  ): Promise<void> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    let selectedFileSet: { files: string[] } | undefined;
+
+    if (this.tabTracking && workspaceFolder) {
+      const sets = loadFileSets(workspaceFolder);
+      if (sets.length > 0) {
+        const items = [
+          { label: "None", description: "No file set", fileSet: undefined as typeof sets[0] | undefined },
+          ...sets.map((s) => ({
+            label: s.name,
+            description: `${s.files.length} files${s.description ? " — " + s.description : ""}`,
+            fileSet: s as typeof sets[0] | undefined,
+          })),
+        ];
+        const picked = await vscode.window.showQuickPick(items, {
+          placeHolder: "Attach a file set to this terminal?",
+        });
+        if (!picked) { return; } // User cancelled — don't create terminal
+        selectedFileSet = picked.fileSet;
+      }
+    }
+
+    const terminalId = await createFn();
+    if (!terminalId || !selectedFileSet || !workspaceFolder) { return; }
+
+    // Pre-populate terminalTabs with the file set's files as URIs
+    const uris = new Set(
+      selectedFileSet.files.map((f) =>
+        vscode.Uri.file(path.join(workspaceFolder, f)).toString()
+      )
+    );
+    this.terminalTabs.set(terminalId, uris);
+    this.sendState();
   }
 
   private async renameTerminal(
@@ -719,6 +832,33 @@ Respond with ONLY the JSON object, no markdown fences or extra text.`;
       content,
       error: false,
     });
+  }
+
+  private async handleAutoLinkedFile(terminalId: string, filePath: string): Promise<void> {
+    if (!this.tabTracking) {
+      return;
+    }
+    const uriStr = vscode.Uri.file(filePath).toString();
+    let files = this.terminalTabs.get(terminalId);
+    if (!files) {
+      files = new Set();
+      this.terminalTabs.set(terminalId, files);
+    }
+    files.add(uriStr);
+
+    if (terminalId === this.currentTrackedTerminalId) {
+      this.switchingTabs = true;
+      try {
+        const uri = vscode.Uri.file(filePath);
+        await vscode.window.showTextDocument(uri, { preview: false, preserveFocus: true });
+      } catch {
+        // File may not exist yet or was deleted
+      } finally {
+        this.switchingTabs = false;
+      }
+    }
+
+    this.sendState();
   }
 
   private adoptExternalTerminal(terminalId: string): void {
@@ -837,6 +977,9 @@ Respond with ONLY the JSON object, no markdown fences or extra text.`;
         </button>
         <button class="header-btn icon-only" id="tabTrackingBtn" title="Tab tracking: associate open files with terminals">
           <i class="codicon codicon-link"></i>
+        </button>
+        <button class="header-btn icon-only" id="fileSetsBtn" title="File sets">
+          <i class="codicon codicon-library"></i>
         </button>
       </div>
     </div>

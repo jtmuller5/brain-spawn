@@ -71,6 +71,7 @@ export class ClaudeMonitor {
   private sessionEndTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private changeCallbacks: (() => void)[] = [];
   private externalTerminalCallbacks: ((terminalId: string) => void)[] = [];
+  private fileEditedCallbacks: ((terminalId: string, filePath: string) => void)[] = [];
   private suppressUnknownUntil = 0;
 
   registerTerminal(
@@ -217,6 +218,9 @@ export class ClaudeMonitor {
           if (!state.editedFiles.includes(filePath)) {
             state.editedFiles.push(filePath);
           }
+          for (const cb of this.fileEditedCallbacks) {
+            cb(terminalId, filePath);
+          }
         }
         break;
 
@@ -312,7 +316,7 @@ export class ClaudeMonitor {
       }
     }
     this.states = reordered;
-    this.fireChange();
+    this.notifyChange();
   }
 
   onDidChange(callback: () => void): vscode.Disposable {
@@ -331,6 +335,16 @@ export class ClaudeMonitor {
       const idx = this.externalTerminalCallbacks.indexOf(callback);
       if (idx >= 0) {
         this.externalTerminalCallbacks.splice(idx, 1);
+      }
+    });
+  }
+
+  onFileEdited(callback: (terminalId: string, filePath: string) => void): vscode.Disposable {
+    this.fileEditedCallbacks.push(callback);
+    return new vscode.Disposable(() => {
+      const idx = this.fileEditedCallbacks.indexOf(callback);
+      if (idx >= 0) {
+        this.fileEditedCallbacks.splice(idx, 1);
       }
     });
   }
