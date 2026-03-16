@@ -20,10 +20,49 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "brainSpawn",
+          "title": "Brain Spawn",
+          "icon": "media/icons/brain-spawn.svg"
+        }
+      ]
+    },
+    "views": {
+      "brainSpawn": [
+        {
+          "id": "brainSpawnTerminals",
+          "name": "Terminals"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "brainSpawn.openDashboard",
+          "when": "view == brainSpawnTerminals",
+          "group": "navigation"
+        },
+        {
+          "command": "brainSpawn.launch",
+          "when": "view == brainSpawnTerminals",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "brainSpawn.sidebar.showTerminal",
+          "when": "view == brainSpawnTerminals && viewItem == terminal",
+          "group": "inline"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "brainSpawn.launch",
-        "title": "Brain Spawn: Launch"
+        "title": "Brain Spawn: Launch",
+        "icon": "$(add)"
       },
       {
         "command": "brainSpawn.newTerminal",
@@ -39,7 +78,8 @@
       },
       {
         "command": "brainSpawn.openDashboard",
-        "title": "Brain Spawn: Dashboard"
+        "title": "Brain Spawn: Dashboard",
+        "icon": "$(layout)"
       },
       {
         "command": "brainSpawn.closeUntracked",
@@ -48,6 +88,15 @@
       {
         "command": "brainSpawn.reinstallHooks",
         "title": "Brain Spawn: Reinstall Claude Hooks"
+      },
+      {
+        "command": "brainSpawn.sidebar.focusTerminal",
+        "title": "Focus Terminal"
+      },
+      {
+        "command": "brainSpawn.sidebar.showTerminal",
+        "title": "Show Terminal",
+        "icon": "$(terminal)"
       }
     ],
     "keybindings": [

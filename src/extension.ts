@@ -5,8 +5,9 @@ import { registerCommands } from "./commands/registerCommands";
 import { DashboardPanel } from "./webview/dashboardPanel";
 import { ClaudeMonitor } from "./hooks/claudeMonitor";
 import { HookServer } from "./hooks/hookServer";
-import { writeHookConfig, removeHookConfig, findExistingHookPort, hooksPresent } from "./hooks/hookConfigWriter";
+import { writeHookConfig, removeHookConfig, findExistingHookPort, hooksPresent, isWriting } from "./hooks/hookConfigWriter";
 import { setClaudeMonitor } from "./terminals/terminalGroup";
+import { TerminalTreeProvider } from "./views/terminalTreeProvider";
 
 let hookServer: HookServer | undefined;
 let activeHookPort: number | undefined;
@@ -68,28 +69,39 @@ export async function activate(
       }
     }
 
-    // Watch for settings.local.json changes and reinstall hooks if missing
+    // Watch for settings.local.json changes and reinstall hooks if missing.
+    // Debounce to avoid racing with atomic saves (delete → create cycles).
     if (activeHookPort) {
       const watcher = vscode.workspace.createFileSystemWatcher(
         "**/.claude/settings.local.json"
       );
       let reinstalling = false;
-      const checkAndReinstall = async () => {
-        if (reinstalling || !activeHookPort) {
+      let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+      const scheduleReinstall = () => {
+        // Ignore events triggered by our own writes
+        if (isWriting()) {
           return;
         }
-        reinstalling = true;
-        try {
-          if (!(await hooksPresent())) {
-            await writeHookConfig(activeHookPort);
-          }
-        } finally {
-          reinstalling = false;
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
         }
+        debounceTimer = setTimeout(async () => {
+          if (reinstalling || !activeHookPort) {
+            return;
+          }
+          reinstalling = true;
+          try {
+            if (!(await hooksPresent())) {
+              await writeHookConfig(activeHookPort);
+            }
+          } finally {
+            reinstalling = false;
+          }
+        }, 500);
       };
-      watcher.onDidChange(checkAndReinstall);
-      watcher.onDidCreate(checkAndReinstall);
-      watcher.onDidDelete(checkAndReinstall);
+      watcher.onDidChange(scheduleReinstall);
+      watcher.onDidCreate(scheduleReinstall);
+      watcher.onDidDelete(scheduleReinstall);
       context.subscriptions.push(watcher);
     }
 
@@ -100,6 +112,31 @@ export async function activate(
   // Commands (always registered so the user can manually trigger)
   context.subscriptions.push(
     ...registerCommands(context, terminalManager, claudeMonitor, () => activeHookPort)
+  );
+
+  // Sidebar tree view
+  const treeProvider = new TerminalTreeProvider(terminalManager, claudeMonitor);
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider("brainSpawnTerminals", treeProvider),
+    vscode.commands.registerCommand("brainSpawn.sidebar.focusTerminal", (terminalId: string) => {
+      // Open the dashboard and let it focus the terminal
+      if (claudeMonitor) {
+        DashboardPanel.createOrShow(context, claudeMonitor, terminalManager);
+      }
+    }),
+    vscode.commands.registerCommand("brainSpawn.sidebar.showTerminal", (item: { terminalId?: string }) => {
+      if (!item?.terminalId) { return; }
+      // Find the vscode.Terminal and reveal it
+      for (const groupName of terminalManager.getRunningGroupNames()) {
+        for (const terminal of terminalManager.getGroupTerminals(groupName)) {
+          const opts = terminal.creationOptions as vscode.TerminalOptions;
+          if (opts.env?.["BRAIN_SPAWN_TERMINAL_ID"] === item.terminalId) {
+            terminal.show();
+            return;
+          }
+        }
+      }
+    })
   );
 
   // Auto-open dashboard (independent of autoStart/hook server)

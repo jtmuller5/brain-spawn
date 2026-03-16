@@ -362,28 +362,34 @@
         </div>`;
       })
       .join("")
-      + (commands.length > 1
-          ? commands.map((cmd, i) =>
-              `<div class="terminal-card new-brain-card" data-command="${escapeAttr(cmd.command)}" title="New ${escapeAttr(cmd.name)} terminal">
-                <i class="codicon codicon-add new-brain-icon"></i>
-                <span class="new-brain-label">${escapeHtml(cmd.name)}</span>
-              </div>`
-            ).join("")
-          : `<div class="terminal-card new-brain-card" title="New brain">
-              <i class="codicon codicon-add new-brain-icon"></i>
-              <span class="new-brain-label">New Brain</span>
-            </div>`);
+      + `<div class="terminal-card new-brain-card quadrant-card">
+            <div class="quadrant" data-action="newTerminal" title="New brain">
+              <i class="codicon codicon-add quadrant-icon"></i>
+              <span class="quadrant-label">Brain</span>
+            </div>
+            <div class="quadrant" data-action="newPlainTerminal" title="New terminal">
+              <i class="codicon codicon-terminal quadrant-icon"></i>
+              <span class="quadrant-label">Terminal</span>
+            </div>
+            <div class="quadrant" data-action="newPlanTerminal" title="New brain in plan mode">
+              <i class="codicon codicon-map quadrant-icon"></i>
+              <span class="quadrant-label">Plan</span>
+            </div>
+            <div class="quadrant" data-action="newWorktreeTerminal" title="New worktree terminal">
+              <i class="codicon codicon-git-branch quadrant-icon"></i>
+              <span class="quadrant-label">Worktree</span>
+            </div>
+          </div>`;
 
     statusTimer = setInterval(updateStatusDurations, 1000);
 
-    // New brain cards
-    terminalList.querySelectorAll(".new-brain-card").forEach((card) => {
-      card.addEventListener("click", () => {
-        const cmd = /** @type {HTMLElement} */ (card).dataset.command;
-        if (cmd) {
-          vscode.postMessage({ type: "newTerminalWithCommand", command: cmd });
-        } else {
-          vscode.postMessage({ type: "newTerminal" });
+    // Quadrant click handlers
+    terminalList.querySelectorAll(".quadrant").forEach((quad) => {
+      quad.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const action = /** @type {HTMLElement} */ (quad).dataset.action;
+        if (action) {
+          vscode.postMessage({ type: action });
         }
       });
     });
@@ -987,19 +993,7 @@
   document.getElementById("launchBtn").addEventListener("click", () => {
     vscode.postMessage({ type: "launch" });
   });
-  document.getElementById("newTerminalBtn").addEventListener("click", () => {
-    vscode.postMessage({ type: "newTerminal" });
-  });
-  document.getElementById("newPlanTerminalBtn").addEventListener("click", () => {
-    vscode.postMessage({ type: "newPlanTerminal" });
-  });
-  document.getElementById("newWorktreeTerminalBtn").addEventListener("click", () => {
-    vscode.postMessage({ type: "newWorktreeTerminal" });
-  });
-  document.getElementById("newPlainTerminalBtn").addEventListener("click", () => {
-    vscode.postMessage({ type: "newPlainTerminal" });
-  });
-  document.getElementById("focusModeBtn").addEventListener("click", () => {
+document.getElementById("focusModeBtn").addEventListener("click", () => {
     vscode.postMessage({ type: "focusMode" });
   });
   document.getElementById("tabTrackingBtn").addEventListener("click", () => {
@@ -1016,18 +1010,6 @@
   // Empty state button handlers
   document.getElementById("emptyLaunchBtn").addEventListener("click", () => {
     vscode.postMessage({ type: "launch" });
-  });
-  document.getElementById("emptyNewTerminalBtn").addEventListener("click", () => {
-    vscode.postMessage({ type: "newTerminal" });
-  });
-  document.getElementById("emptyNewPlanTerminalBtn").addEventListener("click", () => {
-    vscode.postMessage({ type: "newPlanTerminal" });
-  });
-  document.getElementById("emptyNewWorktreeTerminalBtn").addEventListener("click", () => {
-    vscode.postMessage({ type: "newWorktreeTerminal" });
-  });
-  document.getElementById("emptyNewPlainTerminalBtn").addEventListener("click", () => {
-    vscode.postMessage({ type: "newPlainTerminal" });
   });
 
   // Signal ready

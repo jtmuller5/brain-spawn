@@ -158,6 +158,27 @@ export class DashboardPanel {
     });
     this.disposables.push(closeSub);
 
+    // Listen for terminal renames via the VS Code UI
+    const subscribeToNameChange = (terminal: vscode.Terminal) => {
+      if (typeof terminal.onDidChangeName !== 'function') {
+        return;
+      }
+      const nameSub = terminal.onDidChangeName(() => {
+        const terminalId = this.getTerminalId(terminal);
+        if (terminalId) {
+          this.monitor.setName(terminalId, terminal.name);
+        }
+      });
+      this.disposables.push(nameSub);
+    };
+    for (const terminal of vscode.window.terminals) {
+      subscribeToNameChange(terminal);
+    }
+    const openTermSub = vscode.window.onDidOpenTerminal((terminal) => {
+      subscribeToNameChange(terminal);
+    });
+    this.disposables.push(openTermSub);
+
   }
 
   private isClaudeCommand(): boolean {
@@ -887,6 +908,19 @@ Respond with ONLY the JSON object, no markdown fences or extra text.`;
     }
   }
 
+  private getTerminalId(terminal: vscode.Terminal): string | undefined {
+    const env = (terminal.creationOptions as vscode.TerminalOptions).env;
+    if (env?.["BRAIN_SPAWN_TERMINAL_ID"]) {
+      return env["BRAIN_SPAWN_TERMINAL_ID"];
+    }
+    for (const [id, t] of this.externalTerminals) {
+      if (t === terminal) {
+        return id;
+      }
+    }
+    return undefined;
+  }
+
   private findTerminal(terminalId: string): vscode.Terminal | undefined {
     for (const groupName of this.terminalManager.getRunningGroupNames()) {
       for (const terminal of this.terminalManager.getGroupTerminals(
@@ -960,18 +994,6 @@ Respond with ONLY the JSON object, no markdown fences or extra text.`;
         <button class="header-btn icon-only" id="launchBtn" title="Swarm">
           <i class="codicon codicon-run-all"></i>
         </button>
-        <button class="header-btn icon-only" id="newTerminalBtn" title="New brain">
-          <i class="codicon codicon-add"></i>
-        </button>
-        <button class="header-btn icon-only" id="newWorktreeTerminalBtn" title="New worktree brain">
-          <i class="codicon codicon-git-branch"></i>
-        </button>
-        <button class="header-btn icon-only" id="newPlanTerminalBtn" title="New plan terminal">
-          <i class="codicon codicon-map"></i>
-        </button>
-        <button class="header-btn icon-only" id="newPlainTerminalBtn" title="New terminal">
-          <i class="codicon codicon-terminal"></i>
-        </button>
         <button class="header-btn icon-only" id="focusModeBtn" title="Focus mode: close other tabs and panels">
           <i class="codicon codicon-target"></i>
         </button>
@@ -985,22 +1007,10 @@ Respond with ONLY the JSON object, no markdown fences or extra text.`;
     </div>
     <div id="emptyState" class="empty-state">
       <p>No terminals are being monitored.</p>
-      <p class="hint">Launch a terminal group to get started.</p>
+      <p class="hint">Launch a terminal group or create one below.</p>
       <div class="empty-actions">
         <button class="header-btn icon-only" id="emptyLaunchBtn" title="Swarm">
           <i class="codicon codicon-run-all"></i>
-        </button>
-        <button class="header-btn icon-only" id="emptyNewTerminalBtn" title="New brain">
-          <i class="codicon codicon-add"></i>
-        </button>
-        <button class="header-btn icon-only" id="emptyNewWorktreeTerminalBtn" title="New worktree brain">
-          <i class="codicon codicon-git-branch"></i>
-        </button>
-        <button class="header-btn icon-only" id="emptyNewPlanTerminalBtn" title="New plan terminal">
-          <i class="codicon codicon-map"></i>
-        </button>
-        <button class="header-btn icon-only" id="emptyNewPlainTerminalBtn" title="New terminal">
-          <i class="codicon codicon-terminal"></i>
         </button>
       </div>
     </div>

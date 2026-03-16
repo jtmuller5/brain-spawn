@@ -246,37 +246,65 @@ body {
   background: var(--vscode-list-hoverBackground);
 }
 
-.terminal-card.new-brain-card {
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 16px;
+.terminal-card.new-brain-card.quadrant-card {
+  padding: 0;
   background: transparent;
   border: 1px dashed color-mix(in srgb, var(--vscode-descriptionForeground) 20%, transparent);
   min-height: 80px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  overflow: hidden;
 }
 
-.terminal-card.new-brain-card:hover {
-  border-color: color-mix(in srgb, var(--vscode-focusBorder) 50%, transparent);
-  background: color-mix(in srgb, var(--vscode-focusBorder) 4%, transparent);
+.quadrant {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 0;
 }
 
-.new-brain-icon {
-  font-size: 1.4em;
+.quadrant:nth-child(1) { border-radius: 5px 0 0 0; }
+.quadrant:nth-child(2) { border-radius: 0 5px 0 0; }
+.quadrant:nth-child(3) { border-radius: 0 0 0 5px; }
+.quadrant:nth-child(4) { border-radius: 0 0 5px 0; }
+
+.quadrant:nth-child(1) {
+  border-right: 1px solid color-mix(in srgb, var(--vscode-descriptionForeground) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-descriptionForeground) 10%, transparent);
+}
+.quadrant:nth-child(2) {
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-descriptionForeground) 10%, transparent);
+}
+.quadrant:nth-child(3) {
+  border-right: 1px solid color-mix(in srgb, var(--vscode-descriptionForeground) 10%, transparent);
+}
+
+.quadrant:hover {
+  background: color-mix(in srgb, var(--vscode-focusBorder) 8%, transparent);
+}
+
+.quadrant-icon {
+  font-size: 1.2em;
   color: color-mix(in srgb, var(--vscode-descriptionForeground) 25%, transparent);
 }
 
-.terminal-card.new-brain-card:hover .new-brain-icon {
+.quadrant:hover .quadrant-icon {
   color: color-mix(in srgb, var(--vscode-focusBorder) 60%, transparent);
 }
 
-.new-brain-label {
-  font-size: 0.8em;
+.quadrant-label {
+  font-size: 0.7em;
   font-weight: 400;
   color: color-mix(in srgb, var(--vscode-descriptionForeground) 30%, transparent);
 }
 
-.terminal-card.new-brain-card:hover .new-brain-label {
+.quadrant:hover .quadrant-label {
   color: color-mix(in srgb, var(--vscode-descriptionForeground) 60%, transparent);
 }
 

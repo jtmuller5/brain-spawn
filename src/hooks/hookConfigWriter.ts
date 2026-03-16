@@ -4,6 +4,12 @@ import * as path from "path";
 
 const BRAIN_SPAWN_MARKER = "brain-spawn-hook";
 
+// Tracks whether we are currently writing so file watchers can ignore self-triggered events.
+let _writing = false;
+export function isWriting(): boolean {
+  return _writing;
+}
+
 const HOOK_EVENTS = [
   "SessionStart",
   "UserPromptSubmit",
@@ -200,11 +206,17 @@ export async function writeHookConfig(port: number): Promise<void> {
       ];
     }
 
-    await fs.promises.writeFile(
-      settingsPath,
-      JSON.stringify(settings, null, 2),
-      "utf-8"
-    );
+    _writing = true;
+    try {
+      await fs.promises.writeFile(
+        settingsPath,
+        JSON.stringify(settings, null, 2),
+        "utf-8"
+      );
+    } finally {
+      // Keep the flag set briefly so the watcher event (which fires async) sees it
+      setTimeout(() => { _writing = false; }, 200);
+    }
   }
 }
 
@@ -258,11 +270,16 @@ export async function removeHookConfig(): Promise<void> {
     }
 
     if (changed) {
-      await fs.promises.writeFile(
-        settingsPath,
-        JSON.stringify(settings, null, 2),
-        "utf-8"
-      );
+      _writing = true;
+      try {
+        await fs.promises.writeFile(
+          settingsPath,
+          JSON.stringify(settings, null, 2),
+          "utf-8"
+        );
+      } finally {
+        setTimeout(() => { _writing = false; }, 200);
+      }
     }
   }
 }
