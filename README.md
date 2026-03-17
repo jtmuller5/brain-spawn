@@ -19,9 +19,10 @@ Spawn a swarm of Claude terminals with a single command.
 ## Getting Started
 
 1. Install the extension.
-2. Press `Cmd+Shift+T` (`Ctrl+Shift+T` on Windows/Linux) or run **Brain Spawn: Launch** from the command palette.
-3. A batch of Claude terminals appear, ready to go.
-4. Run **Brain Spawn: Dashboard** to open the live monitoring dashboard.
+2. Run **Brain Spawn: Reinstall Claude Hooks** from the command palette to set up the hooks that power the live dashboard.
+3. Press `Cmd+Shift+T` (`Ctrl+Shift+T` on Windows/Linux) or run **Brain Spawn: Launch** from the command palette.
+4. A batch of Claude terminals appear, ready to go.
+5. Run **Brain Spawn: Dashboard** to open the live monitoring dashboard.
 
 ## Commands
 
@@ -32,6 +33,7 @@ Spawn a swarm of Claude terminals with a single command.
 | `Brain Spawn: New Plan Terminal` | — | Spawn a terminal in plan mode (read-only) |
 | `Brain Spawn: New Worktree Terminal` | — | Spawn a terminal with `--worktree` |
 | `Brain Spawn: Dashboard` | — | Open the live terminal monitoring dashboard |
+| `Brain Spawn: Reinstall Claude Hooks` | — | Install/reinstall hooks for live dashboard monitoring |
 
 ## Settings
 
