@@ -4,11 +4,6 @@ import * as path from "path";
 
 const BRAIN_SPAWN_MARKER = "brain-spawn-hook";
 
-// Tracks whether we are currently writing so file watchers can ignore self-triggered events.
-let _writing = false;
-export function isWriting(): boolean {
-  return _writing;
-}
 
 const HOOK_EVENTS = [
   "SessionStart",
@@ -139,34 +134,6 @@ export async function findExistingHookPort(): Promise<number | undefined> {
   return undefined;
 }
 
-export async function hooksPresent(): Promise<boolean> {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders) {
-    return false;
-  }
-
-  for (const folder of folders) {
-    const settingsPath = getSettingsPath(folder.uri);
-    try {
-      const content = await fs.promises.readFile(settingsPath, "utf-8");
-      const settings: ClaudeSettings = JSON.parse(content);
-      if (!settings.hooks) {
-        return false;
-      }
-      // Check that every expected event has a brain-spawn marker group
-      for (const event of HOOK_EVENTS) {
-        const groups = settings.hooks[event];
-        if (!groups || !groups.some((g: MatcherGroup) => g._marker === BRAIN_SPAWN_MARKER)) {
-          return false;
-        }
-      }
-    } catch {
-      return false;
-    }
-  }
-  return true;
-}
-
 export async function writeHookConfig(port: number): Promise<void> {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders) {
@@ -206,17 +173,11 @@ export async function writeHookConfig(port: number): Promise<void> {
       ];
     }
 
-    _writing = true;
-    try {
-      await fs.promises.writeFile(
-        settingsPath,
-        JSON.stringify(settings, null, 2),
-        "utf-8"
-      );
-    } finally {
-      // Keep the flag set briefly so the watcher event (which fires async) sees it
-      setTimeout(() => { _writing = false; }, 200);
-    }
+    await fs.promises.writeFile(
+      settingsPath,
+      JSON.stringify(settings, null, 2),
+      "utf-8"
+    );
   }
 }
 
@@ -270,16 +231,11 @@ export async function removeHookConfig(): Promise<void> {
     }
 
     if (changed) {
-      _writing = true;
-      try {
-        await fs.promises.writeFile(
-          settingsPath,
-          JSON.stringify(settings, null, 2),
-          "utf-8"
-        );
-      } finally {
-        setTimeout(() => { _writing = false; }, 200);
-      }
+      await fs.promises.writeFile(
+        settingsPath,
+        JSON.stringify(settings, null, 2),
+        "utf-8"
+      );
     }
   }
 }

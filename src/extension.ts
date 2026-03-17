@@ -5,7 +5,7 @@ import { registerCommands } from "./commands/registerCommands";
 import { DashboardPanel } from "./webview/dashboardPanel";
 import { ClaudeMonitor } from "./hooks/claudeMonitor";
 import { HookServer } from "./hooks/hookServer";
-import { writeHookConfig, removeHookConfig, findExistingHookPort, hooksPresent, isWriting } from "./hooks/hookConfigWriter";
+import { writeHookConfig, removeHookConfig, findExistingHookPort } from "./hooks/hookConfigWriter";
 import { setClaudeMonitor } from "./terminals/terminalGroup";
 import { TerminalTreeProvider } from "./views/terminalTreeProvider";
 
@@ -69,41 +69,6 @@ export async function activate(
       }
     }
 
-    // Watch for settings.local.json changes and reinstall hooks if missing.
-    // Debounce to avoid racing with atomic saves (delete → create cycles).
-    if (activeHookPort) {
-      const watcher = vscode.workspace.createFileSystemWatcher(
-        "**/.claude/settings.local.json"
-      );
-      let reinstalling = false;
-      let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-      const scheduleReinstall = () => {
-        // Ignore events triggered by our own writes
-        if (isWriting()) {
-          return;
-        }
-        if (debounceTimer) {
-          clearTimeout(debounceTimer);
-        }
-        debounceTimer = setTimeout(async () => {
-          if (reinstalling || !activeHookPort) {
-            return;
-          }
-          reinstalling = true;
-          try {
-            if (!(await hooksPresent())) {
-              await writeHookConfig(activeHookPort);
-            }
-          } finally {
-            reinstalling = false;
-          }
-        }, 500);
-      };
-      watcher.onDidChange(scheduleReinstall);
-      watcher.onDidCreate(scheduleReinstall);
-      watcher.onDidDelete(scheduleReinstall);
-      context.subscriptions.push(watcher);
-    }
 
     // Terminal close cleanup
     context.subscriptions.push(terminalManager.startListening());
